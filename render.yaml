@@ -1,0 +1,22 @@
+services:
+  # Express 웹 서버
+  - type: web
+    name: prism-web
+    env: node
+    buildCommand: npm install
+    startCommand: node app.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_URL
+        sync: false
+    
+  # FastAPI 센서 서버
+  - type: web
+    name: prism-api
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api_server:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
