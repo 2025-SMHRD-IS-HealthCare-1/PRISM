@@ -168,14 +168,14 @@ function connectWebSocket() {
           const confidence = message.confidence || 0;
           addEvent(
             "danger",
-            `🔥 CCTV 화재 감지! (${getZoneName(zone)}, 신뢰도: ${(
+            `CCTV 화재 감지! (${getZoneName(zone)}, 신뢰도: ${(
               confidence * 100
             ).toFixed(1)}%)`
           );
 
           // 브라우저 알림
           if (Notification.permission === "granted") {
-            new Notification("🔥 PRISM 화재 경보", {
+            new Notification("PRISM 화재 경보", {
               body: `${getZoneName(
                 zone
               )} CCTV에서 화재가 감지되었습니다! (신뢰도: ${(
@@ -189,7 +189,7 @@ function connectWebSocket() {
         } else if (message.type === "sensor_disconnected") {
           // 센서 연결 끊김 이벤트
           const zone = message.zone || "unknown";
-          addEvent("warning", `⚠️ ${getZoneName(zone)} 센서 연결 끊김`);
+          addEvent("warning", `${getZoneName(zone)} 센서 연결 끊김`);
           updateSensorConnectionStatus(zone, false);
         } else if (message.type === "sensor_connection_status") {
           // 센서 연결 상태 변경 이벤트
@@ -200,12 +200,12 @@ function connectWebSocket() {
           if (connected) {
             addEvent(
               "normal",
-              `✅ ${getZoneName(zone)} 센서 연결됨 (${deviceId})`
+              `${getZoneName(zone)} 센서 연결됨 (${deviceId})`
             );
           } else {
             addEvent(
               "warning",
-              `⚠️ ${getZoneName(zone)} 센서 연결 끊김 (${deviceId})`
+              `${getZoneName(zone)} 센서 연결 끊김 (${deviceId})`
             );
           }
 
@@ -267,7 +267,7 @@ function updateSensorDataFromWebSocket(zone, data, message) {
     if (fireAlertEvent && fireAlertEvent.parentNode) {
       fireAlertEvent.parentNode.removeChild(fireAlertEvent);
       fireAlertEvent = null;
-      addEvent("normal", `✅ ${getZoneName(zone)} 불꽃 감지 해제`);
+      addEvent("normal", `${getZoneName(zone)} 불꽃 감지 해제`);
     }
   }
 
@@ -1114,22 +1114,14 @@ function addEvent(level, message) {
   const eventItem = document.createElement("div");
   eventItem.className = `event-item event-${level}`;
 
-  // 레벨별 아이콘
-  const icons = {
-    danger: "🚨",
-    warning: "⚠️",
-    caution: "⚡",
-    normal: "ℹ️",
-  };
-  const icon = icons[level] || "ℹ️";
-
+  // 이모지 제거 - 아이콘 없이 메시지만 표시
   eventItem.innerHTML = `
         <span class="event-time">${timeString}</span>
-        <span class="event-text">${icon} ${message}</span>
+        <span class="event-text">${message}</span>
     `;
 
   // 🔥 불꽃 감지 이벤트는 최상단에 고정
-  const isFireAlert = message.includes("불꽃") || message.includes("화재") || message.includes("🔥");
+  const isFireAlert = message.includes("불꽃") || message.includes("화재");
   
   if (isFireAlert && level === "danger") {
     // 기존 불꽃 이벤트 제거
@@ -1244,7 +1236,7 @@ function checkThresholdAndCreateEvent(currentData, prevData) {
 
   // 불꽃 감지
   if (!prevData.flame && currentData.flame) {
-    addEvent("danger", `🔥 ${zone} 불꽃 감지!`);
+    addEvent("danger", `${zone} 불꽃 감지!`);
   }
 }
 
@@ -1270,17 +1262,17 @@ function updateSensorConnectionStatus(zone, connected) {
   }
 
   const wasConnected = sensorConnectionStatus[zone].connected;
-  sensorConnectionStatus[zone].connected = connected;
+  
+  // 센서가 연결될 때만 상태 업데이트 (타임스탬프는 항상 업데이트)
   sensorConnectionStatus[zone].lastUpdate = Date.now(); // 현재 타임스탬프 (밀리초)
-
-  // 연결 상태 변화 시 이벤트 생성
+  
+  // 연결 상태 변경은 타임아웃 체크에서만 처리
   if (!wasConnected && connected) {
-    // 연결됨
-    addEvent("normal", `✅ ${getZoneName(zone)} 센서 연결됨`);
+    sensorConnectionStatus[zone].connected = true;
+    // 연결됨 이벤트 (최초 1회만)
+    addEvent("normal", `${getZoneName(zone)} 센서 연결됨`);
+    updateSensorCount();
   }
-
-  // 센서 카운트 업데이트
-  updateSensorCount();
 }
 
 function updateCameraCount() {
@@ -1373,7 +1365,7 @@ function startEventUpdates() {
   }, CONFIG.EVENT_UPDATE_INTERVAL); // 1분마다
 }
 
-// 센서 타임아웃 체크 (30초마다)
+// 센서 타임아웃 체크 (10초마다)
 function startSensorTimeoutCheck() {
   sensorTimeoutCheckInterval = setInterval(() => {
     const now = Date.now();
@@ -1388,6 +1380,7 @@ function startSensorTimeoutCheck() {
             `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
           );
           status.connected = false;
+          addEvent("warning", `${getZoneName(zone)} 센서 연결 끊김`);
           updateSensorCount();
           updateZoneStatusToInactive(zone);
         }
