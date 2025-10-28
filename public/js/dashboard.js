@@ -2,8 +2,12 @@
 const CONFIG = {
   API_BASE_URL:
     window.location.hostname === "localhost"
-      ? "http://localhost:3000" // Express 백엔드 서버
-      : "", // Vercel 배포시 상대 경로 사용 (같은 도메인)
+      ? "http://localhost:8000" // FastAPI 백엔드 서버
+      : "https://prism-api-ay8q.onrender.com", // Render 배포 서버
+  WS_BASE_URL:
+    window.location.hostname === "localhost"
+      ? "ws://localhost:8000" // WebSocket 로컬
+      : "wss://prism-api-ay8q.onrender.com", // WebSocket Render
   UPDATE_INTERVAL: 5000, // 5초마다 업데이트
   CHART_UPDATE_INTERVAL: 30000, // 30초마다 차트 업데이트
   EVENT_UPDATE_INTERVAL: 60000, // 1분마다 이벤트 업데이트
@@ -16,6 +20,10 @@ let sensorData = {
     temperature: 0,
     gas: 0,
     dust: 0,
+    pm25: 0,
+    pm1: 0,
+    pm10: 0,
+    gas_delta: 0,
     flame: false,
     status: "normal",
   },
@@ -30,6 +38,16 @@ let lastUpdateTime = null;
 let previousSensorData = {}; // 이전 센서 데이터 (임계값 체크용)
 let eventCount = 0;
 let lastDailyUpdate = null; // 마지막 일간 업데이트 시간
+let websocket = null; // WebSocket 연결
+let reconnectTimer = null; // 재연결 타이머
+
+// 센서 연결 상태 추적 {zone: {connected: true/false, lastUpdate: timestamp}}
+let sensorConnectionStatus = {
+  testbox: { connected: false, lastUpdate: null },
+  warehouse: { connected: false, lastUpdate: null },
+  inspection: { connected: false, lastUpdate: null },
+  machine: { connected: false, lastUpdate: null },
+};
 
 // Charts
 let historicalChart = null;
@@ -42,6 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeEvents(); // 초기 이벤트 생성
   updateCameraCount(); // 초기 카메라 카운트
   updateSystemStatus(); // 초기 시스템 상태
+  connectWebSocket(); // WebSocket 연결
   startDataUpdates();
   loadHistoricalData();
   scheduleDailyUpdate(); // 일간 데이터 갱신 스케줄
@@ -67,6 +86,211 @@ function updateClock() {
     hour12: false,
   });
   document.getElementById("current-time").textContent = timeString;
+}
+
+// ═══════════════════════ WebSocket 연결 ═══════════════════════
+function connectWebSocket() {
+  try {
+    console.log(`🔌 WebSocket 연결 시도: ${CONFIG.WS_BASE_URL}/ws`);
+    websocket = new WebSocket(`${CONFIG.WS_BASE_URL}/ws`);
+
+    websocket.onopen = () => {
+      console.log("✅ WebSocket 연결 성공");
+      isConnected = true;
+      updateConnectionStatus(true);
+
+      // 센서 연결 이벤트
+      addEvent("normal", "센서 연결 완료");
+
+      // 재연결 타이머 클리어
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    websocket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log("📨 WebSocket 메시지:", message);
+
+        if (message.type === "update") {
+          // 실시간 센서 데이터 업데이트
+          const deviceId = message.device_id;
+          const data = message.data;
+
+          // device_id에서 zone 추출 (예: rpi-01 -> testbox로 매핑)
+          let zone = currentZone;
+          if (deviceId.includes("rpi")) {
+            zone = "testbox"; // 라즈베리 파이는 testbox에 매핑
+          }
+
+          // 센서 데이터 업데이트
+          updateSensorDataFromWebSocket(zone, data, message);
+
+          // 🔥 위험 알람 체크 및 이벤트 생성
+          if (message.alert && message.reasons && message.reasons.length > 0) {
+            showDangerAlert(message.level, message.reasons);
+
+            // 각 경고 이유를 이벤트로 추가
+            message.reasons.forEach((reason) => {
+              addEvent(
+                message.level || "warning",
+                `${getZoneName(zone)} ${reason}`
+              );
+            });
+          }
+
+          // 센서 연결 상태 업데이트 (데이터 수신 = 연결됨)
+          updateSensorConnectionStatus(zone, true);
+        } else if (message.type === "init") {
+          // 초기 데이터 수신
+          console.log("📊 초기 데이터 수신:", message.data);
+          addEvent("normal", "센서 데이터 로드 완료");
+        } else if (message.type === "pong") {
+          // ping/pong 응답
+          console.log("🏓 Pong 수신");
+        } else if (message.type === "cctv_fire_detected") {
+          // 🔥 CCTV 화재 감지 이벤트
+          const zone = message.zone || "unknown";
+          const confidence = message.confidence || 0;
+          addEvent(
+            "danger",
+            `🔥 CCTV 화재 감지! (${getZoneName(zone)}, 신뢰도: ${(
+              confidence * 100
+            ).toFixed(1)}%)`
+          );
+
+          // 브라우저 알림
+          if (Notification.permission === "granted") {
+            new Notification("🔥 PRISM 화재 경보", {
+              body: `${getZoneName(
+                zone
+              )} CCTV에서 화재가 감지되었습니다! (신뢰도: ${(
+                confidence * 100
+              ).toFixed(1)}%)`,
+              icon: "/image/prism_logo.png",
+              tag: "fire-alert",
+              requireInteraction: true,
+            });
+          }
+        } else if (message.type === "sensor_disconnected") {
+          // 센서 연결 끊김 이벤트
+          const zone = message.zone || "unknown";
+          addEvent("warning", `⚠️ ${getZoneName(zone)} 센서 연결 끊김`);
+          updateSensorConnectionStatus(zone, false);
+        } else if (message.type === "sensor_connection_status") {
+          // 센서 연결 상태 변경 이벤트
+          const zone = message.zone || "unknown";
+          const connected = message.connected;
+          const deviceId = message.device_id;
+
+          if (connected) {
+            addEvent(
+              "normal",
+              `✅ ${getZoneName(zone)} 센서 연결됨 (${deviceId})`
+            );
+          } else {
+            addEvent(
+              "warning",
+              `⚠️ ${getZoneName(zone)} 센서 연결 끊김 (${deviceId})`
+            );
+          }
+
+          updateSensorConnectionStatus(zone, connected);
+        }
+      } catch (error) {
+        console.error("WebSocket 메시지 파싱 실패:", error);
+      }
+    };
+
+    websocket.onerror = (error) => {
+      console.error("❌ WebSocket 오류:", error);
+      isConnected = false;
+      updateConnectionStatus(false);
+      addEvent("warning", "센서 연결 오류 발생");
+    };
+
+    websocket.onclose = () => {
+      console.log("🔌 WebSocket 연결 종료");
+      isConnected = false;
+      updateConnectionStatus(false);
+      addEvent("warning", "센서 연결 종료");
+
+      // 5초 후 재연결 시도
+      if (!reconnectTimer) {
+        reconnectTimer = setTimeout(() => {
+          console.log("🔄 WebSocket 재연결 시도...");
+          connectWebSocket();
+        }, 5000);
+      }
+    };
+  } catch (error) {
+    console.error("WebSocket 연결 실패:", error);
+    isConnected = false;
+    updateConnectionStatus(false);
+  }
+}
+
+function updateSensorDataFromWebSocket(zone, data, message) {
+  // 이전 데이터 저장
+  const prevData = previousSensorData[zone] || {};
+
+  // 센서 데이터 저장
+  const status = calculateStatus(data);
+  sensorData[zone] = {
+    temperature: parseFloat(data.temperature) || 0,
+    gas: parseFloat(data.gas) || 0,
+    dust: parseFloat(data.pm25 || data.dust) || 0,
+    pm25: parseFloat(data.pm25) || 0,
+    pm1: parseFloat(data.pm1) || 0,
+    pm10: parseFloat(data.pm10) || 0,
+    gas_delta: parseFloat(data.gas_delta) || 0,
+    flame: data.flame || false,
+    status: status,
+  };
+
+  // 임계값 체크 및 이벤트 생성
+  checkThresholdAndCreateEvent(data, prevData);
+
+  // 이전 데이터 업데이트
+  previousSensorData[zone] = {
+    temperature: parseFloat(data.temperature) || 0,
+    gas: parseFloat(data.gas) || 0,
+    dust: parseFloat(data.pm25 || data.dust) || 0,
+    pm25: parseFloat(data.pm25) || 0,
+    pm1: parseFloat(data.pm1) || 0,
+    pm10: parseFloat(data.pm10) || 0,
+    gas_delta: parseFloat(data.gas_delta) || 0,
+    flame: data.flame || false,
+  };
+
+  // UI 업데이트 (현재 선택된 구역만)
+  if (zone === currentZone) {
+    updateSensorDisplay(data);
+  }
+
+  updateZoneStatus(zone);
+  updateOverallStatus();
+  updateConnectionStatus(true);
+  updateSensorCount();
+}
+
+function showDangerAlert(level, reasons) {
+  // 위험 알람 표시
+  console.warn(`🚨 ${level} 알람:`, reasons);
+
+  // 이벤트 추가
+  const eventText = reasons.join(" | ");
+  addEvent(level, eventText);
+
+  // 브라우저 알림 (권한이 있는 경우)
+  if (Notification.permission === "granted") {
+    new Notification("🚨 PRISM 위험 알림", {
+      body: eventText,
+      icon: "/image/prism_logo.png",
+    });
+  }
 }
 
 // Data Updates
@@ -176,7 +400,6 @@ function showDisconnectedState() {
   // 구역 박스 상태도 미연결로 업데이트
   updateZoneStatusToInactive(currentZone);
 }
-
 function updateSensorData(data) {
   // 이전 데이터 저장
   const prevData = previousSensorData[data.zone] || {};
@@ -211,27 +434,59 @@ function updateSensorData(data) {
 }
 
 function calculateStatus(data) {
-  // 임계값 기준으로 상태 계산
+  // 임계값 기준으로 상태 계산 (라즈베리 파이 코드와 동일)
   const temp = parseFloat(data.temperature);
   const gas = parseFloat(data.gas);
-  const dust = parseFloat(data.dust);
+  const pm25 = parseFloat(data.pm25 || data.dust);
+  const pm1 = parseFloat(data.pm1 || 0);
+  const pm10 = parseFloat(data.pm10 || 0);
+  const gas_delta = parseFloat(data.gas_delta || 0);
   const flame = data.flame;
 
-  if (flame || temp > 50 || gas > 100 || dust > 50) {
+  // 위험 (danger) - 즉시 대응 필요
+  if (
+    flame ||
+    temp > 35 ||
+    gas > 200 ||
+    pm1 > 50 ||
+    pm25 > 35 ||
+    pm10 > 100 ||
+    gas_delta > 50
+  ) {
     return "danger";
-  } else if (temp > 40 || gas > 70 || dust > 30) {
+  }
+  // 경고 (warning) - 주의 필요
+  else if (temp > 30 || gas > 150 || pm25 > 25 || pm10 > 75 || gas_delta > 30) {
     return "warning";
-  } else if (temp > 30 || gas > 50 || dust > 20) {
+  }
+  // 주의 (caution) - 모니터링 필요
+  else if (temp > 25 || gas > 100 || pm25 > 15 || pm10 > 50) {
     return "caution";
   }
   return "normal";
 }
 
 function updateSensorDisplay(data) {
+  // 미세먼지 종합 계산 (PM2.5 우선, PM1과 PM10도 고려)
+  let dustValue = data.pm25 || data.dust || 0;
+  const pm1 = data.pm1 || 0;
+  const pm10 = data.pm10 || 0;
+
+  // PM2.5가 없으면 PM1과 PM10의 평균으로 추정
+  if (!data.pm25 && !data.dust) {
+    if (pm1 > 0 && pm10 > 0) {
+      dustValue = Math.round((pm1 + pm10) / 2);
+    } else if (pm1 > 0) {
+      dustValue = pm1;
+    } else if (pm10 > 0) {
+      dustValue = Math.round(pm10 / 2); // PM10의 절반 정도가 PM2.5
+    }
+  }
+
   // 센서 패널 업데이트
   document.getElementById("temp-value").textContent = `${data.temperature}°C`;
   document.getElementById("gas-value").textContent = `${data.gas} ppm`;
-  document.getElementById("dust-value").textContent = `${data.dust} g/m³`;
+  document.getElementById("dust-value").textContent = `${dustValue} μg/m³`;
   document.getElementById("flame-value").textContent = data.flame
     ? "감지됨!"
     : "미감지";
@@ -246,7 +501,7 @@ function updateSensorDisplay(data) {
   document.getElementById("detail-gas-value").textContent = `${data.gas} ppm`;
   document.getElementById(
     "detail-dust-value"
-  ).textContent = `${data.dust} g/m³`;
+  ).textContent = `${dustValue} μg/m³`;
   document.getElementById("detail-flame-value").textContent = data.flame
     ? "감지됨!"
     : "미감지";
@@ -793,7 +1048,13 @@ function getZoneName(zone) {
 }
 
 // Event Logging
-function addEvent(message) {
+function addEvent(level, message) {
+  // level이 없으면 기본값 "normal"
+  if (typeof level === "string" && !message) {
+    message = level;
+    level = "normal";
+  }
+
   const eventsList = document.getElementById("events-list");
   const now = new Date();
   const timeString = `${now.getHours().toString().padStart(2, "0")}:${now
@@ -802,10 +1063,20 @@ function addEvent(message) {
     .padStart(2, "0")}`;
 
   const eventItem = document.createElement("div");
-  eventItem.className = "event-item";
+  eventItem.className = `event-item event-${level}`;
+
+  // 레벨별 아이콘
+  const icons = {
+    danger: "🚨",
+    warning: "⚠️",
+    caution: "⚡",
+    normal: "ℹ️",
+  };
+  const icon = icons[level] || "ℹ️";
+
   eventItem.innerHTML = `
         <span class="event-time">${timeString}</span>
-        <span class="event-text">${message}</span>
+        <span class="event-text">${icon} ${message}</span>
     `;
 
   eventsList.insertBefore(eventItem, eventsList.firstChild);
@@ -820,98 +1091,117 @@ function addEvent(message) {
   updateEventCount();
 }
 
-// 초기 이벤트 생성
+// 초기 이벤트 생성 (더미 데이터 제거)
 function initializeEvents() {
-  const initialEvents = [
-    "시스템 시작",
-    "센서 연결 확인 완료",
-    "TEST BOX 센서 정상",
-    "원자재 창고 온도 안정",
-    "제품 검사실 먼지 농도 정상",
-    "기계/전기실 가스 농도 안정",
-    "전체 구역 상태 정상",
-  ];
-
-  // 역순으로 추가 (최신이 위로 오도록)
-  initialEvents.forEach((message, index) => {
-    const eventsList = document.getElementById("events-list");
-    const now = new Date();
-    // 각 이벤트를 1분 간격으로 시간 설정
-    now.setMinutes(now.getMinutes() - (initialEvents.length - 1 - index));
-    const timeString = `${now.getHours().toString().padStart(2, "0")}:${now
-      .getMinutes()
-      .toString()
-      .padStart(2, "0")}`;
-
-    const eventItem = document.createElement("div");
-    eventItem.className = "event-item";
-    eventItem.innerHTML = `
-            <span class="event-time">${timeString}</span>
-            <span class="event-text">${message}</span>
-        `;
-
-    eventsList.appendChild(eventItem);
-  });
-
-  eventCount = initialEvents.length;
-  updateEventCount();
+  // 시스템 시작 메시지만 표시
+  addEvent("normal", "시스템 시작 - 센서 연결 대기 중...");
 }
 
 // 임계값 체크 및 이벤트 생성
 function checkThresholdAndCreateEvent(currentData, prevData) {
   const zone = getZoneName(currentData.zone);
 
-  // 온도 체크
+  // 온도 체크 (라즈베리 파이 임계값과 동일)
   if (prevData.temperature !== undefined) {
     if (currentData.temperature >= 35 && prevData.temperature < 35) {
-      addEvent(`${zone} 온도 위험 (${currentData.temperature}°C)`);
+      addEvent("danger", `${zone} 온도 위험 (${currentData.temperature}°C)`);
     } else if (currentData.temperature >= 30 && prevData.temperature < 30) {
-      addEvent(`${zone} 온도 경고 (${currentData.temperature}°C)`);
-    } else if (currentData.temperature >= 28 && prevData.temperature < 28) {
-      addEvent(`${zone} 온도 주의 (${currentData.temperature}°C)`);
+      addEvent("warning", `${zone} 온도 경고 (${currentData.temperature}°C)`);
+    } else if (currentData.temperature >= 25 && prevData.temperature < 25) {
+      addEvent("caution", `${zone} 온도 주의 (${currentData.temperature}°C)`);
     }
   }
 
-  // 가스 체크
+  // 가스 체크 (라즈베리 파이 임계값과 동일)
   if (prevData.gas !== undefined) {
-    if (currentData.gas >= 500 && prevData.gas < 500) {
-      addEvent(`${zone} 가스 농도 위험 (${currentData.gas} ppm)`);
-    } else if (currentData.gas >= 300 && prevData.gas < 300) {
-      addEvent(`${zone} 가스 농도 경고 (${currentData.gas} ppm)`);
-    } else if (currentData.gas >= 200 && prevData.gas < 200) {
-      addEvent(`${zone} 가스 농도 주의 (${currentData.gas} ppm)`);
+    if (currentData.gas >= 200 && prevData.gas < 200) {
+      addEvent("danger", `${zone} 가스 농도 위험 (${currentData.gas})`);
+    } else if (currentData.gas >= 150 && prevData.gas < 150) {
+      addEvent("warning", `${zone} 가스 농도 경고 (${currentData.gas})`);
+    } else if (currentData.gas >= 100 && prevData.gas < 100) {
+      addEvent("caution", `${zone} 가스 농도 주의 (${currentData.gas})`);
     }
   }
 
-  // 먼지 체크
-  if (prevData.dust !== undefined) {
-    if (currentData.dust >= 200 && prevData.dust < 200) {
-      addEvent(`${zone} 먼지 농도 위험 (${currentData.dust} μg/m³)`);
-    } else if (currentData.dust >= 150 && prevData.dust < 150) {
-      addEvent(`${zone} 먼지 농도 경고 (${currentData.dust} μg/m³)`);
-    } else if (currentData.dust >= 100 && prevData.dust < 100) {
-      addEvent(`${zone} 먼지 농도 주의 (${currentData.dust} μg/m³)`);
+  // 가스 급증 체크
+  if (currentData.gas_delta !== undefined && prevData.gas_delta !== undefined) {
+    if (currentData.gas_delta >= 50 && prevData.gas_delta < 50) {
+      addEvent("danger", `${zone} 가스 급증 감지 (Δ=${currentData.gas_delta})`);
+    } else if (currentData.gas_delta >= 30 && prevData.gas_delta < 30) {
+      addEvent("warning", `${zone} 가스 증가 (Δ=${currentData.gas_delta})`);
+    }
+  }
+
+  // PM2.5 체크
+  const pm25 = currentData.pm25 || currentData.dust;
+  const prevPm25 = prevData.pm25 || prevData.dust;
+  if (pm25 !== undefined && prevPm25 !== undefined) {
+    if (pm25 >= 35 && prevPm25 < 35) {
+      addEvent("danger", `${zone} PM2.5 위험 (${pm25} μg/m³)`);
+    } else if (pm25 >= 25 && prevPm25 < 25) {
+      addEvent("warning", `${zone} PM2.5 경고 (${pm25} μg/m³)`);
+    } else if (pm25 >= 15 && prevPm25 < 15) {
+      addEvent("caution", `${zone} PM2.5 주의 (${pm25} μg/m³)`);
+    }
+  }
+
+  // PM1.0 체크
+  if (currentData.pm1 !== undefined && prevData.pm1 !== undefined) {
+    if (currentData.pm1 >= 50 && prevData.pm1 < 50) {
+      addEvent("danger", `${zone} PM1.0 위험 (${currentData.pm1} μg/m³)`);
+    }
+  }
+
+  // PM10 체크
+  if (currentData.pm10 !== undefined && prevData.pm10 !== undefined) {
+    if (currentData.pm10 >= 100 && prevData.pm10 < 100) {
+      addEvent("danger", `${zone} PM10 위험 (${currentData.pm10} μg/m³)`);
+    } else if (currentData.pm10 >= 75 && prevData.pm10 < 75) {
+      addEvent("warning", `${zone} PM10 경고 (${currentData.pm10} μg/m³)`);
+    } else if (currentData.pm10 >= 50 && prevData.pm10 < 50) {
+      addEvent("caution", `${zone} PM10 주의 (${currentData.pm10} μg/m³)`);
     }
   }
 
   // 불꽃 감지
   if (!prevData.flame && currentData.flame) {
-    addEvent(`${zone} 불꽃 감지!`);
+    addEvent("danger", `🔥 ${zone} 불꽃 감지!`);
   }
 }
 
 // 센서 및 카메라 카운트 업데이트
 function updateSensorCount() {
-  // 활성화된 구역 수 계산 (inactive 클래스가 없는 구역)
-  const activeZones = document.querySelectorAll(".zone-box:not(.inactive)");
-  const activeSensors = activeZones.length;
+  // 연결된 센서 수 계산 (sensorConnectionStatus 기반)
+  const connectedSensors = Object.values(sensorConnectionStatus).filter(
+    (status) => status.connected
+  ).length;
 
   // 전체 구역 수
-  const totalZones = document.querySelectorAll(".zone-box").length;
+  const totalZones = Object.keys(sensorConnectionStatus).length;
 
   document.getElementById(
     "active-sensors"
-  ).textContent = `${activeSensors}/${totalZones}개`;
+  ).textContent = `${connectedSensors}/${totalZones}개`;
+}
+
+// 센서 연결 상태 업데이트
+function updateSensorConnectionStatus(zone, connected) {
+  if (!sensorConnectionStatus[zone]) {
+    sensorConnectionStatus[zone] = { connected: false, lastUpdate: null };
+  }
+
+  const wasConnected = sensorConnectionStatus[zone].connected;
+  sensorConnectionStatus[zone].connected = connected;
+  sensorConnectionStatus[zone].lastUpdate = new Date();
+
+  // 연결 상태 변화 시 이벤트 생성
+  if (!wasConnected && connected) {
+    // 연결됨
+    addEvent("normal", `✅ ${getZoneName(zone)} 센서 연결됨`);
+  }
+
+  // 센서 카운트 업데이트
+  updateSensorCount();
 }
 
 function updateCameraCount() {

@@ -1,7 +1,0 @@
-# 라즈베리파이 Python 패키지
-# pip3 install -r requirements_rpi.txt
-
-RPi.GPIO>=0.7.1
-spidev>=3.6
-pyserial>=3.5
-requests>=2.31.0

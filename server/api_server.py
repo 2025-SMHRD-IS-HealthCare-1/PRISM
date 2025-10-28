@@ -158,6 +158,142 @@ async def websocket_endpoint(websocket: WebSocket):
 # 데이터 수집 엔드포인트 (라즈베리파이/오렌지파이)
 # ============================================
 
+def check_thresholds(device_id: str, sensor_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    센서 데이터 임계값 체크 및 위험 수준 판단
+    
+    반환값:
+    {
+        "alert": True/False,
+        "level": "danger"/"warning"/"caution"/"normal",
+        "reasons": ["불꽃 감지", "가스 높음", ...]
+    }
+    """
+    # 임계값 설정
+    THRESHOLDS = {
+        "flame": True,              # 불꽃 감지 시 위험
+        "temperature": {
+            "danger": 35.0,         # 위험
+            "warning": 30.0,        # 경고
+            "caution": 25.0         # 주의
+        },
+        "gas": {
+            "danger": 200,          # 원시값 기준
+            "warning": 150,
+            "caution": 100
+        },
+        "gas_delta": {
+            "danger": 50,           # 급격한 증가
+            "warning": 30
+        },
+        "pm1": {
+            "danger": 50,
+            "warning": 35
+        },
+        "pm25": {
+            "danger": 35,           # PM2.5
+            "warning": 25,
+            "caution": 15
+        },
+        "pm10": {
+            "danger": 100,
+            "warning": 75,
+            "caution": 50
+        }
+    }
+    
+    alert = False
+    level = "normal"
+    reasons = []
+    
+    # 1. 불꽃 감지
+    if sensor_data.get("flame") == True:
+        alert = True
+        level = "danger"
+        reasons.append("🔥 불꽃 감지")
+    
+    # 2. 온도
+    temp = sensor_data.get("temperature")
+    if temp is not None:
+        if temp > THRESHOLDS["temperature"]["danger"]:
+            alert = True
+            level = "danger"
+            reasons.append(f"🌡️ 고온 ({temp}°C)")
+        elif temp > THRESHOLDS["temperature"]["warning"]:
+            if level not in ["danger"]:
+                level = "warning"
+            reasons.append(f"⚠️ 온도 경고 ({temp}°C)")
+        elif temp > THRESHOLDS["temperature"]["caution"]:
+            if level == "normal":
+                level = "caution"
+    
+    # 3. 가스 농도
+    gas = sensor_data.get("gas")
+    if gas is not None:
+        if gas > THRESHOLDS["gas"]["danger"]:
+            alert = True
+            level = "danger"
+            reasons.append(f"💨 가스 농도 위험 ({gas})")
+        elif gas > THRESHOLDS["gas"]["warning"]:
+            if level not in ["danger"]:
+                level = "warning"
+            reasons.append(f"⚠️ 가스 농도 경고 ({gas})")
+        elif gas > THRESHOLDS["gas"]["caution"]:
+            if level == "normal":
+                level = "caution"
+    
+    # 4. 가스 급증
+    gas_delta = sensor_data.get("gas_delta")
+    if gas_delta is not None:
+        if gas_delta > THRESHOLDS["gas_delta"]["danger"]:
+            alert = True
+            level = "danger"
+            reasons.append(f"📈 가스 급증 (Δ={gas_delta})")
+        elif gas_delta > THRESHOLDS["gas_delta"]["warning"]:
+            if level not in ["danger"]:
+                level = "warning"
+    
+    # 5. 미세먼지 PM1.0
+    pm1 = sensor_data.get("pm1")
+    if pm1 is not None and pm1 > THRESHOLDS["pm1"]["danger"]:
+        alert = True
+        level = "danger"
+        reasons.append(f"💨 PM1.0 높음 ({pm1})")
+    
+    # 6. 미세먼지 PM2.5
+    pm25 = sensor_data.get("pm25")
+    if pm25 is not None:
+        if pm25 > THRESHOLDS["pm25"]["danger"]:
+            alert = True
+            level = "danger"
+            reasons.append(f"💨 PM2.5 높음 ({pm25})")
+        elif pm25 > THRESHOLDS["pm25"]["warning"]:
+            if level not in ["danger"]:
+                level = "warning"
+        elif pm25 > THRESHOLDS["pm25"]["caution"]:
+            if level == "normal":
+                level = "caution"
+    
+    # 7. 미세먼지 PM10
+    pm10 = sensor_data.get("pm10")
+    if pm10 is not None:
+        if pm10 > THRESHOLDS["pm10"]["danger"]:
+            alert = True
+            level = "danger"
+            reasons.append(f"💨 PM10 높음 ({pm10})")
+        elif pm10 > THRESHOLDS["pm10"]["warning"]:
+            if level not in ["danger"]:
+                level = "warning"
+        elif pm10 > THRESHOLDS["pm10"]["caution"]:
+            if level == "normal":
+                level = "caution"
+    
+    return {
+        "alert": alert,
+        "level": level,
+        "reasons": reasons
+    }
+
 @app.post("/ingest")
 async def ingest_data(data: IngestData):
     """
@@ -175,12 +311,18 @@ async def ingest_data(data: IngestData):
     device_id = data.device_id
     timestamp = data.ts if data.ts else datetime.now().timestamp()
     
+    # 임계값 체크
+    threshold_result = check_thresholds(device_id, data.data)
+    
     # 데이터 저장
     stored_data = {
         "device_id": device_id,
         "data": data.data,
         "timestamp": timestamp,
-        "datetime": datetime.fromtimestamp(timestamp).isoformat()
+        "datetime": datetime.fromtimestamp(timestamp).isoformat(),
+        "alert": threshold_result["alert"],
+        "level": threshold_result["level"],
+        "reasons": threshold_result["reasons"]
     }
     
     # 최신 데이터 업데이트
@@ -197,6 +339,8 @@ async def ingest_data(data: IngestData):
         HISTORY[device_id] = HISTORY[device_id][-1000:]
     
     # 로그 출력
+    if threshold_result["alert"]:
+        print(f"🚨 [{device_id}] 위험 감지! {' | '.join(threshold_result['reasons'])}")
     print(f"📊 [{device_id}] 데이터 수신: {data.data}")
     
     # 🔥 WebSocket으로 모든 연결된 브라우저에게 실시간 전송
@@ -204,12 +348,17 @@ async def ingest_data(data: IngestData):
         "type": "update",
         "device_id": device_id,
         "data": data.data,
+        "alert": threshold_result["alert"],
+        "level": threshold_result["level"],
+        "reasons": threshold_result["reasons"],
         "timestamp": datetime.fromtimestamp(timestamp).isoformat()
     })
     
     return {
         "status": "success",
         "device_id": device_id,
+        "alert": threshold_result["alert"],
+        "level": threshold_result["level"],
         "timestamp": datetime.fromtimestamp(timestamp).isoformat()
     }
 
@@ -251,6 +400,81 @@ async def get_devices():
         })
     
     return devices
+
+# ============================================
+# 이벤트 알림 엔드포인트 (CCTV, 센서 연결 상태)
+# ============================================
+
+class CCTVFireAlert(BaseModel):
+    """CCTV 화재 감지 알림 모델"""
+    zone: str  # 구역 이름 (testbox, warehouse, inspection, machine)
+    confidence: float  # 신뢰도 (0.0 ~ 1.0)
+    frame_url: Optional[str] = None  # 화재 감지 프레임 이미지 URL (선택)
+    timestamp: Optional[float] = None
+
+class SensorConnectionAlert(BaseModel):
+    """센서 연결 상태 알림 모델"""
+    zone: str  # 구역 이름
+    device_id: str  # 디바이스 ID
+    connected: bool  # 연결 상태 (True: 연결됨, False: 연결 끊김)
+    timestamp: Optional[float] = None
+
+@app.post("/alert/cctv_fire")
+async def cctv_fire_alert(alert: CCTVFireAlert):
+    """
+    🔥 CCTV 화재 감지 알림
+    
+    CCTV 화재 감지 시스템에서 화재 감지 시 호출
+    모든 연결된 브라우저에게 실시간 알림 전송
+    """
+    timestamp = alert.timestamp if alert.timestamp else datetime.now().timestamp()
+    
+    print(f"🔥 CCTV 화재 감지! [{alert.zone}] 신뢰도: {alert.confidence:.2%}")
+    
+    # WebSocket으로 모든 클라이언트에게 화재 알림 전송
+    await manager.broadcast({
+        "type": "cctv_fire_detected",
+        "zone": alert.zone,
+        "confidence": alert.confidence,
+        "frame_url": alert.frame_url,
+        "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+    })
+    
+    return {
+        "status": "success",
+        "message": "화재 알림이 전송되었습니다",
+        "zone": alert.zone,
+        "confidence": alert.confidence
+    }
+
+@app.post("/alert/sensor_connection")
+async def sensor_connection_alert(alert: SensorConnectionAlert):
+    """
+    📡 센서 연결 상태 알림
+    
+    센서 연결/연결 끊김 시 호출
+    모든 연결된 브라우저에게 실시간 알림 전송
+    """
+    timestamp = alert.timestamp if alert.timestamp else datetime.now().timestamp()
+    
+    status_text = "연결됨" if alert.connected else "연결 끊김"
+    print(f"📡 센서 상태 변경 [{alert.device_id}]: {status_text}")
+    
+    # WebSocket으로 모든 클라이언트에게 센서 상태 알림 전송
+    await manager.broadcast({
+        "type": "sensor_connection_status",
+        "zone": alert.zone,
+        "device_id": alert.device_id,
+        "connected": alert.connected,
+        "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+    })
+    
+    return {
+        "status": "success",
+        "message": f"센서 상태 알림이 전송되었습니다 ({status_text})",
+        "device_id": alert.device_id,
+        "connected": alert.connected
+    }
 
 # ============================================
 # 기존 API 호환성 유지 (Express/웹 대시보드용)
