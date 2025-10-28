@@ -360,6 +360,11 @@
   color: var(--color-normal);
 }
 
+.status-dot.status-connected {
+  background-color: var(--color-connected);
+  color: var(--color-connected);
+}
+
 .status-dot.status-caution {
   background-color: var(--color-caution);
   color: var(--color-caution);

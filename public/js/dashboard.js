@@ -398,13 +398,18 @@ function updateConnectionStatus(connected) {
       normal: "연결됨", // "정상" → "연결됨"으로 변경
     };
     statusText.textContent = statusTexts[status];
-    statusDot.className = `status-dot status-${status}`;
+
+    // "연결됨" 상태는 파란색, 나머지는 원래 상태 색상
+    const displayStatus = status === "normal" ? "connected" : status;
+    statusDot.className = `status-dot status-${displayStatus}`;
 
     // 상태에 따라 배지 테두리 색상 변경
     if (statusBadge) {
+      const colorVar =
+        status === "normal" ? "--color-connected" : `--color-${status}`;
       statusBadge.style.borderColor = getComputedStyle(
         document.documentElement
-      ).getPropertyValue(`--color-${status}`);
+      ).getPropertyValue(colorVar);
     }
   } else {
     // 연결 안됨
