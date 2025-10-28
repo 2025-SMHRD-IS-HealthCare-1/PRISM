@@ -294,7 +294,9 @@ function updateSensorDataFromWebSocket(zone, data, message) {
   updateZoneStatus(zone);
   updateOverallStatus();
   updateConnectionStatus(true);
-  updateSensorCount();
+
+  // 센서 연결 상태 업데이트 (타임스탬프 갱신)
+  updateSensorConnectionStatus(zone, true);
 }
 
 function showDangerAlert(level, reasons) {
@@ -478,7 +480,7 @@ function calculateStatus(data) {
   else if (temp > 30 && gas > 150 && pm25 > 25) {
     return "caution";
   }
-  
+
   return "normal";
 }
 
@@ -576,7 +578,7 @@ function updateZoneStatus(zone) {
   if (zoneBox) {
     const statusIndicator = zoneBox.querySelector(".zone-status");
     statusIndicator.className = `zone-status ${statusClass}`;
-    
+
     // 🔥 위험 상태일 때 박스 전체를 빨간색으로 표시
     if (status === "danger") {
       zoneBox.style.borderColor = "var(--color-danger)";
@@ -1093,7 +1095,7 @@ function addEvent(level, message) {
   // 🔥 중복 이벤트 방지 (1분 내 동일 메시지 무시)
   const eventKey = `${level}:${message}`;
   const now = Date.now();
-  
+
   if (recentEvents[eventKey]) {
     const timeSinceLastEvent = now - recentEvents[eventKey];
     if (timeSinceLastEvent < CONFIG.EVENT_DUPLICATE_TIMEOUT) {
@@ -1101,14 +1103,14 @@ function addEvent(level, message) {
       return;
     }
   }
-  
+
   // 이벤트 타임스탬프 기록
   recentEvents[eventKey] = now;
 
   const eventsList = document.getElementById("events-list");
-  const timeString = new Date(now).toLocaleTimeString("ko-KR", { 
-    hour: "2-digit", 
-    minute: "2-digit" 
+  const timeString = new Date(now).toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
   const eventItem = document.createElement("div");
@@ -1122,17 +1124,17 @@ function addEvent(level, message) {
 
   // 🔥 불꽃 감지 이벤트는 최상단에 고정
   const isFireAlert = message.includes("불꽃") || message.includes("화재");
-  
+
   if (isFireAlert && level === "danger") {
     // 기존 불꽃 이벤트 제거
     if (fireAlertEvent && fireAlertEvent.parentNode) {
       fireAlertEvent.parentNode.removeChild(fireAlertEvent);
     }
-    
+
     // 새로운 불꽃 이벤트를 최상단에 삽입
     eventsList.insertBefore(eventItem, eventsList.firstChild);
     fireAlertEvent = eventItem;
-    
+
     // 불꽃 이벤트에 특별 스타일 추가
     eventItem.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
     eventItem.style.borderLeft = "3px solid var(--color-danger)";
@@ -1140,7 +1142,10 @@ function addEvent(level, message) {
     // 일반 이벤트는 불꽃 이벤트 다음에 삽입
     if (fireAlertEvent && fireAlertEvent.parentNode) {
       // 불꽃 이벤트 바로 다음에 삽입
-      fireAlertEvent.parentNode.insertBefore(eventItem, fireAlertEvent.nextSibling);
+      fireAlertEvent.parentNode.insertBefore(
+        eventItem,
+        fireAlertEvent.nextSibling
+      );
     } else {
       // 불꽃 이벤트가 없으면 최상단에 삽입
       eventsList.insertBefore(eventItem, eventsList.firstChild);
@@ -1148,7 +1153,9 @@ function addEvent(level, message) {
   }
 
   // 최대 10개 항목만 유지 (불꽃 이벤트는 카운트에서 제외)
-  const regularEvents = Array.from(eventsList.children).filter(el => el !== fireAlertEvent);
+  const regularEvents = Array.from(eventsList.children).filter(
+    (el) => el !== fireAlertEvent
+  );
   while (regularEvents.length > 10) {
     const lastEvent = regularEvents[regularEvents.length - 1];
     if (lastEvent !== fireAlertEvent) {
@@ -1262,16 +1269,19 @@ function updateSensorConnectionStatus(zone, connected) {
   }
 
   const wasConnected = sensorConnectionStatus[zone].connected;
-  
-  // 센서가 연결될 때만 상태 업데이트 (타임스탬프는 항상 업데이트)
-  sensorConnectionStatus[zone].lastUpdate = Date.now(); // 현재 타임스탬프 (밀리초)
-  
-  // 연결 상태 변경은 타임아웃 체크에서만 처리
+
+  // 타임스탬프 항상 업데이트 (데이터 수신 시간 갱신)
+  sensorConnectionStatus[zone].lastUpdate = Date.now();
+
+  // 연결 상태 업데이트
   if (!wasConnected && connected) {
+    // 미연결 → 연결 (최초 연결 또는 재연결)
     sensorConnectionStatus[zone].connected = true;
-    // 연결됨 이벤트 (최초 1회만)
     addEvent("normal", `${getZoneName(zone)} 센서 연결됨`);
     updateSensorCount();
+  } else if (connected && !wasConnected) {
+    // 연결 유지 (이미 연결된 상태)
+    sensorConnectionStatus[zone].connected = true;
   }
 }
 
@@ -1379,6 +1389,7 @@ function startSensorTimeoutCheck() {
           console.warn(
             `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
           );
+          // 연결 상태를 false로 변경 (이벤트는 1회만 발생하도록 addEvent에서 중복 체크)
           status.connected = false;
           addEvent("warning", `${getZoneName(zone)} 센서 연결 끊김`);
           updateSensorCount();
