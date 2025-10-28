@@ -74,6 +74,12 @@ class SensorConnectionAlert(BaseModel):
     connected: bool
     timestamp: Optional[float] = None
 
+class BuzzerTrigger(BaseModel):
+    """라즈베리파이 부저 트리거 모델"""
+    zone: str
+    reason: str
+    duration: Optional[int] = 3000  # 기본 3초
+
 # ============================================
 # 인메모리 데이터 저장
 # ============================================
@@ -606,6 +612,35 @@ async def get_zones():
             })
     
     return zones
+
+# ============================================
+# 🔔 라즈베리파이 부저 트리거 API
+# ============================================
+
+@app.post("/api/buzzer/trigger")
+async def trigger_buzzer(trigger: BuzzerTrigger):
+    """
+    라즈베리파이 부저를 울리는 명령을 WebSocket으로 전달
+    
+    화재/연기 감지 시 프론트엔드가 이 API를 호출하면
+    WebSocket을 통해 라즈베리파이에게 부저 울림 명령 전달
+    """
+    message = {
+        "type": "buzzer_trigger",
+        "zone": trigger.zone,
+        "reason": trigger.reason,
+        "duration": trigger.duration,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # 모든 WebSocket 연결(라즈베리파이 포함)에게 브로드캐스트
+    await manager.broadcast(message)
+    
+    return {
+        "status": "success",
+        "message": f"부저 트리거 명령 전송 완료 ({trigger.zone})",
+        "data": message
+    }
 
 # ============================================
 # 헬스 체크 및 루트

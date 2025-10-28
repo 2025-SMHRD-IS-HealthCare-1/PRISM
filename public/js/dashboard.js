@@ -57,6 +57,12 @@ let recentEvents = {};
 // 불꽃 감지 이벤트 고정 (최상단 표시)
 let fireAlertEvent = null;
 
+// 🔥 오렌지파이 CCTV 스트림 저장
+let cctvStreamFrame = null;
+
+// 🔥 오렌지파이 화재 감지 상태
+let fireDetectionActive = false;
+
 // 센서 타임아웃 체크 인터벌
 let sensorTimeoutCheckInterval = null;
 
@@ -112,24 +118,34 @@ function connectWebSocket() {
     websocket.onopen = () => {
       console.log("✅ WebSocket 연결 성공");
       isConnected = true;
-      // WebSocket 연결은 서버 통신 연결이지 센서 연결이 아님
-      // 센서 연결 상태는 데이터를 받을 때만 updateSensorConnectionStatus에서 처리
-      // ⚠️ 중요: WebSocket 연결 != 센서 연결 (센서는 데이터 수신 시점에만 연결로 간주)
+      addEvent("normal", "서버 연결 성공");
 
-      // 재연결 타이머 클리어
+      // 재연결 타이머 초기화
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
 
-      // ⚠️ WebSocket 연결 시 센서 미연결 메시지를 표시하지 않음
-      // (기존 센서 연결 상태 유지 - 데이터가 들어오면 자동으로 연결됨)
+      // ⚠️ 중요: WebSocket 연결 시 센서 연결 상태를 초기화하지 않음
+      // 센서 연결 상태는 실제 데이터 수신으로만 판단
     };
 
     websocket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
         console.log("📨 WebSocket 메시지:", message);
+
+        // 🔥 오렌지파이 화재/연기 감지 (fire_detection)
+        if (message.type === "fire_detection") {
+          handleFireDetection(message);
+          return;
+        }
+
+        // 📹 오렌지파이 비디오 스트림 (video_stream)
+        if (message.type === "video_stream") {
+          handleVideoStream(message);
+          return;
+        }
 
         if (message.type === "update") {
           // 실시간 센서 데이터 업데이트
@@ -141,7 +157,7 @@ function connectWebSocket() {
           if (deviceId && deviceId.includes("rpi")) {
             zone = "testbox"; // 라즈베리 파이는 testbox에 매핑
           } else if (deviceId && deviceId.includes("opi")) {
-            zone = "warehouse"; // 오렌지 파이는 warehouse에 매핑 (예시)
+            zone = "testbox"; // 오렌지파이도 testbox에 매핑 (같은 구역)
           }
 
           console.log(`📊 [${deviceId}] → zone: ${zone}, data:`, data);
@@ -258,6 +274,100 @@ function connectWebSocket() {
     console.error("WebSocket 연결 실패:", error);
     isConnected = false;
     addEvent("warning", "서버 연결 실패");
+  }
+}
+
+// 🔥 오렌지파이 화재/연기 감지 처리
+function handleFireDetection(message) {
+  console.log("🔥 화재/연기 감지:", message);
+  
+  const label = message.label || "Unknown";
+  const score = message.score || 0;
+  const source = message.source || "orangepi_fire_detector_01";
+  const zone = "testbox"; // 오렌지파이는 TEST BOX에 배치
+
+  // 신뢰도 백분율
+  const confidence = (score * 100).toFixed(1);
+
+  // 🚨 무조건 위험 상태로 전환
+  fireDetectionActive = true;
+  
+  // 센서 데이터를 위험 상태로 강제 설정
+  sensorData[zone].status = "danger";
+  
+  // 구역 상태 업데이트
+  updateZoneStatus(zone, "danger");
+  
+  // 이벤트 추가 (최상단 고정)
+  const eventMessage = `🔥 ${label} 감지! (신뢰도: ${confidence}%)`;
+  addEvent("danger", eventMessage);
+
+  // 🚨 위험 알림 표시
+  showDangerAlert("danger", [eventMessage]);
+
+  // 📢 브라우저 알림
+  if (Notification.permission === "granted") {
+    new Notification("⚠️ PRISM 화재 경보", {
+      body: `TEST BOX에서 ${label}이(가) 감지되었습니다! (신뢰도: ${confidence}%)`,
+      icon: "/image/prism_logo.png",
+      tag: "fire-detection",
+      requireInteraction: true,
+    });
+  }
+
+  // 🔔 라즈베리파이 부저 울리기
+  triggerBuzzer(zone, "fire_detected");
+
+  // UI 강제 업데이트
+  if (currentZone === zone) {
+    updateUI();
+  }
+}
+
+// 📹 오렌지파이 비디오 스트림 처리
+function handleVideoStream(message) {
+  console.log("📹 비디오 스트림 수신");
+  
+  // Base64 이미지 프레임 저장
+  const frame = message.frame;
+  const width = message.width || 640;
+  const height = message.height || 480;
+
+  if (frame) {
+    cctvStreamFrame = `data:image/jpeg;base64,${frame}`;
+    
+    // CCTV 팝업이 열려있으면 실시간 업데이트
+    const cctvStream = document.getElementById("cctv-stream");
+    if (cctvStream && cctvStream.parentElement.closest('.popup').classList.contains('active')) {
+      cctvStream.src = cctvStreamFrame;
+    }
+  }
+}
+
+// 🔔 라즈베리파이 부저 트리거 (API 호출)
+async function triggerBuzzer(zone, reason) {
+  try {
+    console.log(`🔔 부저 울리기: ${zone}, 사유: ${reason}`);
+    
+    const response = await fetch(`${CONFIG.API_BASE_URL}/api/buzzer/trigger`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        zone: zone,
+        reason: reason,
+        duration: 5000, // 5초간 울림
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("부저 트리거 실패:", response.statusText);
+    } else {
+      console.log("✅ 부저 트리거 성공");
+    }
+  } catch (error) {
+    console.error("부저 트리거 오류:", error);
   }
 }
 
@@ -1020,9 +1130,19 @@ function openCCTV(zone) {
   ).textContent = `CCTV-${zone.toUpperCase()}-001`;
   document.getElementById("cctv-location").textContent = getZoneName(zone);
 
-  // CCTV 스트림 URL 설정 (실제 스트림 URL로 변경 필요)
+  // 🔥 오렌지파이 CCTV 스트림 설정
   const cctvStream = document.getElementById("cctv-stream");
-  cctvStream.src = `${CONFIG.API_BASE_URL}/api/cctv/${zone}/stream`;
+  
+  // 캐시된 프레임이 있으면 즉시 표시
+  if (cctvStreamFrame) {
+    cctvStream.src = cctvStreamFrame;
+  } else {
+    // 로딩 중 이미지
+    cctvStream.src =
+      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="%23000"/><text x="50%" y="50%" fill="%23fff" text-anchor="middle" font-size="20">CCTV 스트림 대기중...</text></svg>';
+  }
+
+  // 오류 처리
   cctvStream.onerror = () => {
     cctvStream.src =
       'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="%23000"/><text x="50%" y="50%" fill="%23fff" text-anchor="middle" font-size="20">CCTV 연결 대기중...</text></svg>';

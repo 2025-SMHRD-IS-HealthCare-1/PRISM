@@ -5,6 +5,7 @@ FastAPI 서버의 /ingest 엔드포인트로 데이터 전송
 🔥 새로운 구조:
 - HTTP POST로 /ingest 엔드포인트에 데이터 전송
 - FastAPI 서버가 WebSocket으로 브라우저에 실시간 전달
+- WebSocket으로 부저 트리거 명령 수신
 """
 
 import requests
@@ -12,7 +13,16 @@ import time
 import json
 import os
 import socket
+import threading
 from datetime import datetime
+
+try:
+    import websocket  # pip install websocket-client
+    WEBSOCKET_AVAILABLE = True
+except ImportError:
+    WEBSOCKET_AVAILABLE = False
+    print("⚠️  websocket-client가 설치되지 않았습니다. 부저 기능이 비활성화됩니다.")
+    print("   설치: pip install websocket-client")
 
 # ============================================
 # 설정
@@ -24,6 +34,9 @@ DEVICE_ID = os.getenv("DEVICE_ID", "rpi-01")  # 장치 ID: rpi-01, opi-01 등
 
 SEND_INTERVAL = 5  # 5초마다 데이터 전송
 
+# 부저 GPIO 핀 (실제 센서 사용시 설정)
+BUZZER_PIN = 18  # GPIO 18번 핀
+
 # ============================================
 # 센서 초기화 (실제 센서 사용시 주석 해제)
 # ============================================
@@ -31,6 +44,9 @@ SEND_INTERVAL = 5  # 5초마다 데이터 전송
 # 라즈베리파이 GPIO 설정
 # import RPi.GPIO as GPIO
 # import Adafruit_DHT  # 온도/습도 센서
+# GPIO.setmode(GPIO.BCM)
+# GPIO.setup(BUZZER_PIN, GPIO.OUT)
+# GPIO.output(BUZZER_PIN, GPIO.LOW)
 
 # 오렌지파이 GPIO 설정
 # import OPi.GPIO as GPIO
@@ -109,6 +125,84 @@ def read_flame_sensor():
     # 테스트용 더미 데이터
     import random
     return random.random() > 0.95
+
+# ============================================
+# 🔔 부저 제어 함수
+# ============================================
+
+def trigger_buzzer(duration_ms=3000):
+    """
+    부저를 울립니다
+    
+    실제 GPIO 코드 (주석 해제):
+    GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    time.sleep(duration_ms / 1000.0)
+    GPIO.output(BUZZER_PIN, GPIO.LOW)
+    """
+    print(f"🔔 부저 울림! ({duration_ms}ms)")
+    # 실제 구현 시 아래 주석 해제
+    # GPIO.output(BUZZER_PIN, GPIO.HIGH)
+    # time.sleep(duration_ms / 1000.0)
+    # GPIO.output(BUZZER_PIN, GPIO.LOW)
+
+# ============================================
+# WebSocket 리스너 (부저 트리거 명령 수신)
+# ============================================
+
+def on_websocket_message(ws, message):
+    """WebSocket 메시지 수신 콜백"""
+    try:
+        data = json.loads(message)
+        
+        # 부저 트리거 명령 확인
+        if data.get("type") == "buzzer_trigger":
+            reason = data.get("reason", "unknown")
+            duration = data.get("duration", 3000)
+            
+            print(f"🔔 부저 트리거 명령 수신: {reason}")
+            trigger_buzzer(duration)
+            
+    except json.JSONDecodeError:
+        print(f"⚠️  WebSocket 메시지 파싱 실패: {message}")
+    except Exception as e:
+        print(f"❌ WebSocket 메시지 처리 오류: {e}")
+
+def on_websocket_error(ws, error):
+    """WebSocket 오류 콜백"""
+    print(f"❌ WebSocket 오류: {error}")
+
+def on_websocket_close(ws, close_status_code, close_msg):
+    """WebSocket 연결 종료 콜백"""
+    print("🔌 WebSocket 연결 종료. 5초 후 재연결...")
+    time.sleep(5)
+    start_websocket_listener()
+
+def on_websocket_open(ws):
+    """WebSocket 연결 성공 콜백"""
+    print("✅ WebSocket 연결 성공 (부저 리스너 활성화)")
+
+def start_websocket_listener():
+    """WebSocket 리스너 시작 (별도 스레드)"""
+    if not WEBSOCKET_AVAILABLE:
+        return
+    
+    try:
+        ws_url = API_SERVER.replace("http://", "ws://").replace("https://", "wss://") + "/ws"
+        
+        ws = websocket.WebSocketApp(
+            ws_url,
+            on_open=on_websocket_open,
+            on_message=on_websocket_message,
+            on_error=on_websocket_error,
+            on_close=on_websocket_close
+        )
+        
+        # 별도 스레드에서 실행
+        ws_thread = threading.Thread(target=ws.run_forever, daemon=True)
+        ws_thread.start()
+        
+    except Exception as e:
+        print(f"❌ WebSocket 리스너 시작 실패: {e}")
 
 # ============================================
 # 데이터 수집 및 전송
@@ -227,6 +321,18 @@ def main():
     # GPIO 초기화 (실제 센서 사용시 주석 해제)
     # GPIO.setmode(GPIO.BCM)
     # GPIO.setwarnings(False)
+    # GPIO.setup(BUZZER_PIN, GPIO.OUT)
+    # GPIO.output(BUZZER_PIN, GPIO.LOW)
+    
+    # 🔔 WebSocket 리스너 시작 (부저 트리거 명령 수신)
+    if WEBSOCKET_AVAILABLE:
+        print("🔌 WebSocket 리스너 시작 중...")
+        start_websocket_listener()
+        time.sleep(2)  # 연결 대기
+    else:
+        print("⚠️  WebSocket 리스너 비활성화 (websocket-client 미설치)")
+    
+    print("")
     
     last_send = time.time()
     
