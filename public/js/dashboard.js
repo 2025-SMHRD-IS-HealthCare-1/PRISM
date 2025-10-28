@@ -488,15 +488,18 @@ function calculateStatus(data) {
   }
 
   // 위험 (danger) - 모든 센서가 위험 임계값 초과
-  if (temp > 40 && gas > 250 && pm25 > 50) {
+  // temperature: 61+, gas: 401+, pm2.5: 76+
+  if (temp > 60 && gas > 400 && pm25 > 75) {
     return "danger";
   }
   // 경고 (warning) - 모든 센서가 경고 임계값 초과
-  else if (temp > 35 && gas > 200 && pm25 > 35) {
+  // temperature: 46-60, gas: 201-400, pm2.5: 51-75
+  else if (temp > 45 && gas > 200 && pm25 > 50) {
     return "warning";
   }
   // 주의 (caution) - 모든 센서가 주의 임계값 초과
-  else if (temp > 30 && gas > 150 && pm25 > 25) {
+  // temperature: 36-45, gas: 101-200, pm2.5: 26-50
+  else if (temp > 35 && gas > 100 && pm25 > 25) {
     return "caution";
   }
 
@@ -1175,7 +1178,7 @@ function addEvent(level, message) {
 
     // 위험 이벤트를 최상단에 삽입
     eventsList.insertBefore(eventItem, eventsList.firstChild);
-    
+
     // 불꽃 이벤트는 전역 변수로 저장
     if (isFireAlert) {
       fireAlertEvent = eventItem;
@@ -1226,24 +1229,26 @@ function checkThresholdAndCreateEvent(currentData, prevData, zoneName) {
   // zoneName이 제공되지 않으면 currentData.zone 사용
   const zone = getZoneName(zoneName || currentData.zone);
 
-  // 온도 체크 (라즈베리 파이 임계값과 동일)
+  // 온도 체크 (새로운 임계값)
+  // 정상: 0-35, 주의: 36-45, 경고: 46-60, 위험: 61+
   if (prevData.temperature !== undefined) {
-    if (currentData.temperature >= 35 && prevData.temperature < 35) {
+    if (currentData.temperature > 60 && prevData.temperature <= 60) {
       addEvent("danger", `${zone} 온도 위험 (${currentData.temperature}°C)`);
-    } else if (currentData.temperature >= 30 && prevData.temperature < 30) {
+    } else if (currentData.temperature > 45 && prevData.temperature <= 45) {
       addEvent("warning", `${zone} 온도 경고 (${currentData.temperature}°C)`);
-    } else if (currentData.temperature >= 25 && prevData.temperature < 25) {
+    } else if (currentData.temperature > 35 && prevData.temperature <= 35) {
       addEvent("caution", `${zone} 온도 주의 (${currentData.temperature}°C)`);
     }
   }
 
-  // 가스 체크 (라즈베리 파이 임계값과 동일)
+  // 가스 체크 (새로운 임계값)
+  // 정상: 0-100, 주의: 101-200, 경고: 201-400, 위험: 401+
   if (prevData.gas !== undefined) {
-    if (currentData.gas >= 200 && prevData.gas < 200) {
+    if (currentData.gas > 400 && prevData.gas <= 400) {
       addEvent("danger", `${zone} 가스 농도 위험 (${currentData.gas})`);
-    } else if (currentData.gas >= 150 && prevData.gas < 150) {
+    } else if (currentData.gas > 200 && prevData.gas <= 200) {
       addEvent("warning", `${zone} 가스 농도 경고 (${currentData.gas})`);
-    } else if (currentData.gas >= 100 && prevData.gas < 100) {
+    } else if (currentData.gas > 100 && prevData.gas <= 100) {
       addEvent("caution", `${zone} 가스 농도 주의 (${currentData.gas})`);
     }
   }
@@ -1257,15 +1262,16 @@ function checkThresholdAndCreateEvent(currentData, prevData, zoneName) {
     }
   }
 
-  // PM2.5 체크
+  // PM2.5 체크 (새로운 임계값)
+  // 정상: 0-25, 주의: 26-50, 경고: 51-75, 위험: 76+
   const pm25 = currentData.pm25 || currentData.dust;
   const prevPm25 = prevData.pm25 || prevData.dust;
   if (pm25 !== undefined && prevPm25 !== undefined) {
-    if (pm25 >= 35 && prevPm25 < 35) {
+    if (pm25 > 75 && prevPm25 <= 75) {
       addEvent("danger", `${zone} PM2.5 위험 (${pm25} μg/m³)`);
-    } else if (pm25 >= 25 && prevPm25 < 25) {
+    } else if (pm25 > 50 && prevPm25 <= 50) {
       addEvent("warning", `${zone} PM2.5 경고 (${pm25} μg/m³)`);
-    } else if (pm25 >= 15 && prevPm25 < 15) {
+    } else if (pm25 > 25 && prevPm25 <= 25) {
       addEvent("caution", `${zone} PM2.5 주의 (${pm25} μg/m³)`);
     }
   }
