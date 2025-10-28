@@ -71,13 +71,16 @@ document.addEventListener("DOMContentLoaded", () => {
   initializeEvents(); // 초기 이벤트 생성
   updateCameraCount(); // 초기 카메라 카운트
   updateSystemStatus(); // 초기 시스템 상태
-  connectWebSocket(); // WebSocket 연결
+
+  // ✅ 초기 미연결 상태 표시 (WebSocket 연결 전)
+  showDisconnectedState();
+
+  connectWebSocket(); // WebSocket 연결 (연결되면 데이터 수신 시 자동 복구)
   startDataUpdates();
   loadHistoricalData();
   scheduleDailyUpdate(); // 일간 데이터 갱신 스케줄
   startEventUpdates(); // 이벤트 업데이트 시작
   startSensorTimeoutCheck(); // 센서 타임아웃 체크 시작
-  showDisconnectedState(); // 초기 미연결 상태 표시
 });
 
 // Clock
