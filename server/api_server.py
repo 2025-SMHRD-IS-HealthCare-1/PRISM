@@ -91,8 +91,9 @@ class FireEvent(BaseModel):
 
 class VideoStream(BaseModel):
     """오렌지파이 비디오 스트림 모델"""
-    device_id: str
-    timestamp: str
+    ts: str
+    source: str
+    type: str  # "video_stream"
     frame: str  # base64 encoded image
     width: int
     height: int
@@ -708,11 +709,13 @@ async def receive_video_stream(
     stream_data = stream.dict()
     LATEST_VIDEO_STREAM = stream_data
     
+    print(f"📹 비디오 스트림 수신: {stream.source} ({stream.width}x{stream.height})")
+    
     # WebSocket으로 브라우저에 실시간 전달
     websocket_message = {
         "type": "video_stream",
-        "device_id": stream.device_id,
-        "timestamp": stream.timestamp,
+        "source": stream.source,
+        "timestamp": stream.ts,
         "frame": stream.frame,
         "width": stream.width,
         "height": stream.height
