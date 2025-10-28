@@ -288,8 +288,8 @@ function updateSensorDataFromWebSocket(zone, data, message) {
     }
   }
 
-  // 임계값 체크 및 이벤트 생성
-  checkThresholdAndCreateEvent(data, prevData);
+  // 임계값 체크 및 이벤트 생성 (zone 파라미터 추가)
+  checkThresholdAndCreateEvent(data, prevData, zone);
 
   // 이전 데이터 업데이트
   previousSensorData[zone] = {
@@ -456,8 +456,8 @@ function updateSensorData(data) {
     status: status,
   };
 
-  // 임계값 체크 및 이벤트 생성
-  checkThresholdAndCreateEvent(data, prevData);
+  // 임계값 체크 및 이벤트 생성 (zone 파라미터 추가)
+  checkThresholdAndCreateEvent(data, prevData, data.zone);
 
   // 이전 데이터 업데이트
   previousSensorData[data.zone] = {
@@ -1163,20 +1163,25 @@ function addEvent(level, message) {
         <span class="event-text">${message}</span>
     `;
 
-  // 🔥 불꽃 감지 이벤트는 최상단에 고정
+  // 🔥 위험(danger) 이벤트는 최상단에 고정
+  const isDangerEvent = level === "danger";
   const isFireAlert = message.includes("불꽃") || message.includes("화재");
 
-  if (isFireAlert && level === "danger") {
-    // 기존 불꽃 이벤트 제거
-    if (fireAlertEvent && fireAlertEvent.parentNode) {
+  if (isDangerEvent) {
+    // 불꽃 이벤트인 경우 기존 불꽃 이벤트 제거
+    if (isFireAlert && fireAlertEvent && fireAlertEvent.parentNode) {
       fireAlertEvent.parentNode.removeChild(fireAlertEvent);
     }
 
-    // 새로운 불꽃 이벤트를 최상단에 삽입
+    // 위험 이벤트를 최상단에 삽입
     eventsList.insertBefore(eventItem, eventsList.firstChild);
-    fireAlertEvent = eventItem;
+    
+    // 불꽃 이벤트는 전역 변수로 저장
+    if (isFireAlert) {
+      fireAlertEvent = eventItem;
+    }
 
-    // 불꽃 이벤트에 특별 스타일 추가
+    // 위험 이벤트에 특별 스타일 추가
     eventItem.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
     eventItem.style.borderLeft = "3px solid var(--color-danger)";
   } else {
@@ -1217,8 +1222,9 @@ function initializeEvents() {
 }
 
 // 임계값 체크 및 이벤트 생성
-function checkThresholdAndCreateEvent(currentData, prevData) {
-  const zone = getZoneName(currentData.zone);
+function checkThresholdAndCreateEvent(currentData, prevData, zoneName) {
+  // zoneName이 제공되지 않으면 currentData.zone 사용
+  const zone = getZoneName(zoneName || currentData.zone);
 
   // 온도 체크 (라즈베리 파이 임계값과 동일)
   if (prevData.temperature !== undefined) {
