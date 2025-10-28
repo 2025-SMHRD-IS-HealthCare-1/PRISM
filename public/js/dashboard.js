@@ -476,7 +476,9 @@ function updateSensorData(data) {
 }
 
 function calculateStatus(data) {
-  // 임계값 기준으로 상태 계산 (AND 형식 - 모든 조건 만족 시 상태 변경)
+  // 임계값 기준으로 상태 계산
+  // - 위험: AND 조건 (모든 센서가 위험 임계값 초과)
+  // - 경고/주의: OR 조건 (하나라도 해당 임계값 초과)
   const temp = parseFloat(data.temperature);
   const gas = parseFloat(data.gas);
   const pm25 = parseFloat(data.pm25 || data.dust);
@@ -487,19 +489,19 @@ function calculateStatus(data) {
     return "danger";
   }
 
-  // 위험 (danger) - 모든 센서가 위험 임계값 초과
+  // 위험 (danger) - 모든 센서가 위험 임계값 초과 (AND 조건)
   // temperature: 61+, gas: 401+, pm2.5: 76+
   if (temp > 60 && gas > 400 && pm25 > 75) {
     return "danger";
   }
-  // 경고 (warning) - 모든 센서가 경고 임계값 초과
+  // 경고 (warning) - 하나라도 경고 임계값 초과 (OR 조건)
   // temperature: 46-60, gas: 201-400, pm2.5: 51-75
-  else if (temp > 45 && gas > 200 && pm25 > 50) {
+  else if (temp > 45 || gas > 200 || pm25 > 50) {
     return "warning";
   }
-  // 주의 (caution) - 모든 센서가 주의 임계값 초과
+  // 주의 (caution) - 하나라도 주의 임계값 초과 (OR 조건)
   // temperature: 36-45, gas: 101-200, pm2.5: 26-50
-  else if (temp > 35 && gas > 100 && pm25 > 25) {
+  else if (temp > 35 || gas > 100 || pm25 > 25) {
     return "caution";
   }
 
