@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PRISM</title>
+    <link rel="stylesheet" href="css/main.css" />
+    <link rel="stylesheet" href="css/dashboard.css" />
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo">
+          <img src="image/prism_logo.png" alt="PRISM Logo" class="logo-image" />
+          <span>PRISM</span>
+        </div>
+      </div>
+      <div class="header-center">
+        <div class="current-time">
+          <i class="far fa-clock"></i>
+          <span id="current-time"></span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="user-info">
+          <i class="fas fa-user-circle"></i>
+          <span>관리자</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+      <!-- Map Section (Left 45%) -->
+      <div class="map-section">
+        <div class="map-container">
+          <div class="map-background">
+            <h2 class="map-title">공장 배치</h2>
+
+            <!-- Legend (내부 하단 오른쪽) -->
+            <div class="legend-inline">
+              <h4>범례</h4>
+              <div class="legend-items">
+                <div class="legend-item">
+                  <span class="legend-color status-danger"></span>
+                  <span>위험</span>
+                </div>
+                <div class="legend-item">
+                  <span class="legend-color status-warning"></span>
+                  <span>경고</span>
+                </div>
+                <div class="legend-item">
+                  <span class="legend-color status-caution"></span>
+                  <span>주의</span>
+                </div>
+                <div class="legend-item">
+                  <span class="legend-color status-normal"></span>
+                  <span>정상</span>
+                </div>
+                <div class="legend-item">
+                  <i class="fas fa-video"></i>
+                  <span>CCTV</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Zone Boxes -->
+            <div class="zone-box zone-testbox" data-zone="testbox">
+              <div class="zone-header">
+                <h3>TEST BOX</h3>
+                <span class="zone-status status-normal"></span>
+              </div>
+              <div class="zone-controls">
+                <button class="btn-icon btn-cctv" onclick="openCCTV('testbox')">
+                  <i class="fas fa-video"></i>
+                </button>
+                <button
+                  class="btn-icon btn-detail"
+                  onclick="openDetail('testbox')"
+                >
+                  <i class="fas fa-info-circle"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="zone-box zone-warehouse inactive" data-zone="warehouse">
+              <div class="zone-header">
+                <h3>원자재 창고</h3>
+                <span class="zone-status status-inactive"></span>
+              </div>
+              <div class="zone-controls">
+                <button class="btn-icon btn-cctv" disabled>
+                  <i class="fas fa-video"></i>
+                </button>
+                <button class="btn-icon btn-detail" disabled>
+                  <i class="fas fa-info-circle"></i>
+                </button>
+              </div>
+            </div>
+
+            <div
+              class="zone-box zone-inspection inactive"
+              data-zone="inspection"
+            >
+              <div class="zone-header">
+                <h3>제품 검사실</h3>
+                <span class="zone-status status-inactive"></span>
+              </div>
+              <div class="zone-controls">
+                <button class="btn-icon btn-cctv" disabled>
+                  <i class="fas fa-video"></i>
+                </button>
+                <button class="btn-icon btn-detail" disabled>
+                  <i class="fas fa-info-circle"></i>
+                </button>
+              </div>
+            </div>
+
+            <div class="zone-box zone-machine inactive" data-zone="machine">
+              <div class="zone-header">
+                <h3>기계/전기실</h3>
+                <span class="zone-status status-inactive"></span>
+              </div>
+              <div class="zone-controls">
+                <button class="btn-icon btn-cctv" disabled>
+                  <i class="fas fa-video"></i>
+                </button>
+                <button class="btn-icon btn-detail" disabled>
+                  <i class="fas fa-info-circle"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sensor Monitoring Panel (Right 35%) -->
+      <div class="sensor-panel">
+        <div class="panel-header">
+          <h2>센서 모니터링</h2>
+          <button class="btn-zone-select" onclick="openZoneSelector()">
+            구역 선택
+          </button>
+        </div>
+
+        <div class="panel-content">
+          <!-- 가로 배열: 선택된 구역 + 전체 현황 -->
+          <div class="horizontal-layout">
+            <!-- Selected Zone Info -->
+            <div class="selected-zone">
+              <h3>선택된 구역</h3>
+              <div class="zone-info-header">
+                <div class="zone-name" id="selected-zone-name">TEST BOX</div>
+                <!-- 상태 라운딩 박스 -->
+                <div class="status-badge" id="status-badge">
+                  <span
+                    class="status-dot status-normal"
+                    id="selected-zone-status"
+                  ></span>
+                  <span id="selected-zone-status-text">센서 미연결</span>
+                </div>
+              </div>
+
+              <!-- 현재 상태값 표시 - 텍스트만 표시 -->
+              <div class="current-status-display">
+                <div class="status-text-display" id="status-text-display">
+                  정상
+                </div>
+              </div>
+
+              <!-- Sensor Values -->
+              <div class="sensor-values">
+                <div class="sensor-item">
+                  <div class="sensor-icon">
+                    <i class="fas fa-temperature-high"></i>
+                  </div>
+                  <div class="sensor-info">
+                    <span class="sensor-label">온도</span>
+                    <span class="sensor-value" id="temp-value">--°C</span>
+                  </div>
+                </div>
+
+                <div class="sensor-item">
+                  <div class="sensor-icon">
+                    <i class="fas fa-wind"></i>
+                  </div>
+                  <div class="sensor-info">
+                    <span class="sensor-label">가스 농도</span>
+                    <span class="sensor-value" id="gas-value">-- ppm</span>
+                  </div>
+                </div>
+
+                <div class="sensor-item">
+                  <div class="sensor-icon">
+                    <i class="fas fa-smog"></i>
+                  </div>
+                  <div class="sensor-info">
+                    <span class="sensor-label">미세먼지</span>
+                    <span class="sensor-value" id="dust-value">-- μg/m³</span>
+                  </div>
+                </div>
+
+                <div class="sensor-item">
+                  <div class="sensor-icon">
+                    <i class="fas fa-fire"></i>
+                  </div>
+                  <div class="sensor-info">
+                    <span class="sensor-label">불꽃 감지</span>
+                    <span class="sensor-value" id="flame-value">미감지</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Overall Status -->
+            <div class="overall-status">
+              <h3>전체 현황</h3>
+              <div class="status-list">
+                <div class="status-item">
+                  <span class="status-value status-danger" id="danger-count"
+                    >0</span
+                  >
+                  <span class="status-label">위험</span>
+                </div>
+                <div class="status-item">
+                  <span class="status-value status-warning" id="warning-count"
+                    >0</span
+                  >
+                  <span class="status-label">경고</span>
+                </div>
+                <div class="status-item">
+                  <span class="status-value status-caution" id="caution-count"
+                    >0</span
+                  >
+                  <span class="status-label">주의</span>
+                </div>
+                <div class="status-item">
+                  <span class="status-value status-normal" id="normal-count"
+                    >0</span
+                  >
+                  <span class="status-label">정상</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Section -->
+    <div class="bottom-section">
+      <!-- Historical Data Graph -->
+      <div class="bottom-card graph-card">
+        <div class="graph-header">
+          <h3>과거 데이터 그래프</h3>
+          <span class="graph-subtitle">주간 평균 상태 값 (최근 7일)</span>
+          <span class="last-update" id="last-update">Last Update: --:--</span>
+        </div>
+        <canvas id="historical-chart"></canvas>
+      </div>
+
+      <!-- Recent Events -->
+      <div class="bottom-card events-card">
+        <h3>최근 이벤트 발생</h3>
+        <div class="events-list" id="events-list">
+          <!-- 초기 이벤트는 JavaScript에서 생성 -->
+        </div>
+      </div>
+
+      <!-- Statistics -->
+      <div class="bottom-card stats-card">
+        <h3>통계 정보</h3>
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">일일 이벤트</div>
+            <div class="stat-value" id="daily-events">0건</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">활성 센서</div>
+            <div class="stat-value" id="active-sensors">4/4개</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">활성 카메라</div>
+            <div class="stat-value" id="active-cameras">0/4개</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">시스템 상태</div>
+            <div class="stat-value status-online" id="system-status">정상</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CCTV Popup -->
+    <div id="cctv-popup" class="popup">
+      <div class="popup-content popup-large">
+        <div class="popup-header">
+          <h2>CCTV 모니터링</h2>
+          <button class="btn-close" onclick="closePopup('cctv-popup')">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="popup-body">
+          <div class="cctv-container">
+            <div class="cctv-video">
+              <img id="cctv-stream" src="" alt="CCTV Stream" />
+              <div class="cctv-controls">
+                <button class="btn-cctv-control" onclick="zoomIn()">
+                  <i class="fas fa-search-plus"></i>
+                </button>
+                <button class="btn-cctv-control" onclick="zoomOut()">
+                  <i class="fas fa-search-minus"></i>
+                </button>
+                <button class="btn-cctv-control" onclick="refreshCCTV()">
+                  <i class="fas fa-sync"></i>
+                </button>
+                <button class="btn-cctv-control" onclick="fullscreenCCTV()">
+                  <i class="fas fa-expand"></i>
+                </button>
+              </div>
+            </div>
+            <div class="cctv-info">
+              <div class="info-section">
+                <h4>카메라 정보</h4>
+                <div class="info-item">
+                  <span>카메라 ID:</span>
+                  <span id="cctv-id">--</span>
+                </div>
+                <div class="info-item">
+                  <span>위치:</span>
+                  <span id="cctv-location">--</span>
+                </div>
+                <div class="info-item">
+                  <span>해상도:</span>
+                  <span id="cctv-resolution">1920x1080</span>
+                </div>
+                <div class="info-item">
+                  <span>프레임률:</span>
+                  <span id="cctv-fps">30 fps</span>
+                </div>
+              </div>
+              <div class="info-section">
+                <h4>시스템 상태</h4>
+                <div class="info-item">
+                  <span>연결 상태:</span>
+                  <span class="status-online" id="cctv-connection">온라인</span>
+                </div>
+                <div class="info-item">
+                  <span>녹화 상태:</span>
+                  <span id="cctv-recording">녹화중</span>
+                </div>
+                <div class="info-item">
+                  <span>신호 강도:</span>
+                  <span id="cctv-signal">95%</span>
+                </div>
+              </div>
+              <div class="info-section">
+                <h4>최근 활동</h4>
+                <div class="activity-list" id="cctv-activity">
+                  <div class="activity-item">
+                    <div class="activity-time">15:54</div>
+                    <div class="activity-text">온도 센서 임계값 초과</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Detail Popup -->
+    <div id="detail-popup" class="popup">
+      <div class="popup-content popup-large">
+        <div class="popup-header">
+          <h2><span id="detail-zone-name">TEST BOX</span> 상세 정보</h2>
+          <button class="btn-close" onclick="closePopup('detail-popup')">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="popup-body">
+          <div class="detail-container">
+            <!-- 위치 정보와 센서 상태를 가로 배치 -->
+            <div class="detail-horizontal-section">
+              <!-- Location Info -->
+              <div class="detail-section">
+                <h3>위치 정보</h3>
+                <div class="detail-grid">
+                  <div class="detail-item">
+                    <span class="detail-label">구역명:</span>
+                    <span class="detail-value" id="detail-zone">TEST BOX</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">세부 위치:</span>
+                    <span class="detail-value" id="detail-location"
+                      >1층 북동쪽</span
+                    >
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">설치일:</span>
+                    <span class="detail-value" id="detail-install-date"
+                      >2024-01-15</span
+                    >
+                  </div>
+                </div>
+              </div>
+
+              <!-- Sensor Status -->
+              <div class="detail-section">
+                <h3>센서 상태</h3>
+                <div class="sensor-values">
+                  <div class="sensor-item">
+                    <div class="sensor-icon">
+                      <i class="fas fa-temperature-high"></i>
+                    </div>
+                    <div class="sensor-info">
+                      <span class="sensor-label">온도</span>
+                      <span class="sensor-value" id="detail-temp-value"
+                        >--°C</span
+                      >
+                    </div>
+                  </div>
+                  <div class="sensor-item">
+                    <div class="sensor-icon">
+                      <i class="fas fa-wind"></i>
+                    </div>
+                    <div class="sensor-info">
+                      <span class="sensor-label">가스 농도</span>
+                      <span class="sensor-value" id="detail-gas-value"
+                        >-- ppm</span
+                      >
+                    </div>
+                  </div>
+                  <div class="sensor-item">
+                    <div class="sensor-icon">
+                      <i class="fas fa-smog"></i>
+                    </div>
+                    <div class="sensor-info">
+                      <span class="sensor-label">미세먼지</span>
+                      <span class="sensor-value" id="detail-dust-value"
+                        >-- g/m³</span
+                      >
+                    </div>
+                  </div>
+                  <div class="sensor-item">
+                    <div class="sensor-icon">
+                      <i class="fas fa-fire"></i>
+                    </div>
+                    <div class="sensor-info">
+                      <span class="sensor-label">불꽃 감지</span>
+                      <span class="sensor-value" id="detail-flame-value"
+                        >미감지</span
+                      >
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Historical Chart -->
+            <div class="detail-section">
+              <h3>과거 데이터 모니터링 (최근 2시간)</h3>
+              <canvas id="detail-chart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zone Selector Popup -->
+    <div id="zone-selector-popup" class="popup">
+      <div class="popup-content">
+        <div class="popup-header">
+          <h2>구역 선택</h2>
+          <button class="btn-close" onclick="closePopup('zone-selector-popup')">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="popup-body">
+          <div class="zone-list">
+            <div class="zone-list-item active" onclick="selectZone('testbox')">
+              <span class="zone-status status-normal"></span>
+              <span>TEST BOX</span>
+              <i class="fas fa-check"></i>
+            </div>
+            <div
+              class="zone-list-item disabled"
+              onclick="selectZone('warehouse')"
+            >
+              <span class="zone-status status-inactive"></span>
+              <span>원자재 창고</span>
+            </div>
+            <div
+              class="zone-list-item disabled"
+              onclick="selectZone('inspection')"
+            >
+              <span class="zone-status status-inactive"></span>
+              <span>제품 검사실</span>
+            </div>
+            <div
+              class="zone-list-item disabled"
+              onclick="selectZone('machine')"
+            >
+              <span class="zone-status status-inactive"></span>
+              <span>기계/전기실</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Error Popup -->
+    <div id="error-popup" class="popup">
+      <div class="popup-content popup-small">
+        <div class="popup-header">
+          <h2>오류</h2>
+          <button class="btn-close" onclick="closePopup('error-popup')">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <div class="popup-body">
+          <div class="error-message">
+            <i class="fas fa-exclamation-triangle"></i>
+            <p id="error-text">
+              카메라가 연결이 되지 않았거나 문제가 생겼습니다.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="js/dashboard.js"></script>
+  </body>
+</html>

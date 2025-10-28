@@ -1,0 +1,930 @@
+/* Map Section - 라운드 박스 제거 */
+.map-section {
+    flex: 1 1 60%;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
+    padding: var(--spacing-lg);
+    box-shadow: none;
+    border: none;
+}
+
+.map-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 그리드 형태 배경 - 더 넓게 */
+.map-background {
+    flex: 1;
+    background: 
+        linear-gradient(90deg, rgba(139, 157, 195, 0.03) 1px, transparent 1px),
+        linear-gradient(rgba(139, 157, 195, 0.03) 1px, transparent 1px);
+    background-size: 80px 80px; /* 50px에서 80px로 증가 */
+    background-position: center center;
+    border-radius: 0;
+    padding: var(--spacing-xl);
+    position: relative;
+    min-height: 0;
+    height: 100%;
+    border: none;
+}
+
+.map-title {
+    color: var(--text-primary);
+    font-size: 1.5rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Zone Boxes - 4개의 라운딩 박스 유지 */
+.zone-box {
+    position: absolute;
+    background: var(--bg-glass);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    min-width: 180px;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow-sm);
+}
+
+.zone-box:hover:not(.inactive) {
+    transform: translateY(-4px);
+    background: var(--bg-glass-hover);
+    box-shadow: var(--shadow-md);
+    border-color: rgba(107, 207, 255, 0.3);
+}
+
+.zone-box.inactive {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.zone-testbox {
+    top: 20%;
+    left: 20%;
+}
+
+.zone-warehouse {
+    top: 20%;
+    right: 20%;
+}
+
+.zone-inspection {
+    bottom: 20%;
+    left: 20%;
+}
+
+.zone-machine {
+    bottom: 20%;
+    right: 20%;
+}
+
+.zone-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+}
+
+.zone-header h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.zone-status {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    box-shadow: 0 0 8px currentColor;
+}
+
+/* 구역 상태 색상 */
+.zone-status.status-normal {
+    background-color: var(--color-normal);
+    color: var(--color-normal);
+}
+
+.zone-status.status-caution {
+    background-color: var(--color-caution);
+    color: var(--color-caution);
+}
+
+.zone-status.status-warning {
+    background-color: var(--color-warning);
+    color: var(--color-warning);
+}
+
+.zone-status.status-danger {
+    background-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.zone-status.status-inactive {
+    background-color: #64748b;
+    color: #64748b;
+}
+
+.zone-controls {
+    display: flex;
+    gap: var(--spacing-sm);
+}
+
+/* Legend - 배치도 내부 하단 오른쪽 - 라운드 박스 제거 */
+.legend-inline {
+    position: absolute;
+    bottom: 15px;
+    right: 15px;
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
+    padding: var(--spacing-sm) var(--spacing-md);
+    border: none;
+    box-shadow: none;
+    width: auto;
+    max-width: 180px;
+    font-size: 0.85rem;
+}
+
+.legend-inline h4 {
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.legend-items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.legend-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.legend-item i {
+    font-size: 0.9rem;
+    width: 12px;
+    text-align: center;
+}
+
+/* Sensor Panel - Liquid Glass */
+.sensor-panel {
+    flex: 1 1 40%;
+    background: var(--bg-secondary);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--glass-shadow);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.panel-header h2 {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.panel-content {
+    flex: 1;
+    overflow: hidden; /* 스크롤 제거 */
+    min-height: 0;
+}
+
+/* 가로 배열 레이아웃 */
+.horizontal-layout {
+    display: flex;
+    gap: var(--spacing-lg);
+    align-items: flex-start;
+    height: 100%;
+}
+
+/* Selected Zone - Liquid Glass */
+.selected-zone {
+    flex: 1;
+    background: var(--bg-tertiary);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.selected-zone h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+/* 선택된 구역 헤더 (가로 배치) */
+.zone-info-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-md);
+}
+
+.zone-name {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+/* 현재 상태값 표시 - 세로 바와 텍스트 */
+.current-status-display {
+    margin-bottom: var(--spacing-lg);
+    padding: 0;
+    background-color: transparent;
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+}
+
+.status-text-display {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--bg-glass);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    font-size: 1.2rem;
+    font-weight: 600;
+    --status-bar-color: var(--color-normal);
+}
+
+.status-text-display::before {
+    content: '';
+    width: 4px;
+    height: 40px;
+    background-color: var(--status-bar-color);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.zone-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+/* 상태 라운딩 박스 - Liquid Glass */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--bg-glass);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    width: fit-content;
+    transition: all 0.3s ease;
+}
+
+.status-badge .status-dot {
+    width: 10px;
+    height: 10px;
+}
+
+.status-badge span:last-child {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.zone-name {
+    font-size: 1.3rem;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.status-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 0 8px currentColor;
+}
+
+/* 상태 점 색상 (센서 패널용) */
+.status-dot.status-normal {
+    background-color: var(--color-normal);
+    color: var(--color-normal);
+}
+
+.status-dot.status-caution {
+    background-color: var(--color-caution);
+    color: var(--color-caution);
+}
+
+.status-dot.status-warning {
+    background-color: var(--color-warning);
+    color: var(--color-warning);
+}
+
+.status-dot.status-danger {
+    background-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.status-dot.status-inactive {
+    background-color: #64748b;
+    color: #64748b;
+}
+
+/* Sensor Values - Liquid Glass */
+.sensor-values {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-md);
+}
+
+.sensor-item {
+    background: var(--bg-glass);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    display: flex;
+    gap: var(--spacing-md);
+    align-items: center;
+    border: 1px solid var(--glass-border);
+    transition: all 0.3s ease;
+}
+
+.sensor-item:hover {
+    background: var(--bg-glass-hover);
+    box-shadow: var(--shadow-sm);
+}
+
+.sensor-icon {
+    font-size: 1.5rem;
+    color: var(--color-caution);
+}
+
+.sensor-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.sensor-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.sensor-value {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Overall Status - Liquid Glass */
+.overall-status {
+    flex: 0 0 100px;
+    background: var(--bg-tertiary);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.overall-status h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.status-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    flex: 1;
+    justify-content: space-around;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-xs);
+    gap: var(--spacing-xs);
+}
+
+.status-item .status-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.status-item .status-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+/* 상태값 색상 - 글자색만 적용 (배경색 제거) */
+.status-value.status-danger {
+    color: var(--color-danger);
+    background-color: transparent;
+}
+
+.status-value.status-warning {
+    color: var(--color-warning);
+    background-color: transparent;
+}
+
+.status-value.status-caution {
+    color: var(--color-caution);
+    background-color: transparent;
+}
+
+.status-value.status-normal {
+    color: var(--color-normal);
+    background-color: transparent;
+}
+
+/* Bottom Section - Liquid Glass */
+.bottom-section {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr;
+    gap: var(--spacing-lg);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-lg);
+    height: calc(22.5vh);
+    overflow: hidden;
+}
+
+.bottom-card {
+    background: var(--bg-secondary);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--glass-shadow);
+    border: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.bottom-card h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+    flex-shrink: 0;
+}
+
+/* Graph Card */
+.graph-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    flex-shrink: 0;
+}
+
+.graph-header h3 {
+    margin: 0;
+}
+
+.graph-subtitle {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background-color: var(--bg-tertiary);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+}
+
+.last-update {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-left: auto;
+    font-style: italic;
+}
+
+.graph-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.graph-card canvas {
+    flex: 1;
+    min-height: 0;
+}
+
+#historical-chart {
+    width: 100% !important;
+    height: 100% !important;
+    max-height: calc(22.5vh - 80px);
+}
+
+#detail-chart {
+    width: 100%;
+    height: 200px;
+}
+
+/* Events Card */
+.events-card {
+    overflow: hidden;
+}
+
+.events-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    padding-right: var(--spacing-xs);
+}
+
+.event-item {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    margin-bottom: var(--spacing-xs);
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--color-warning);
+    font-size: 0.85rem;
+}
+
+.event-time {
+    font-weight: bold;
+    color: var(--text-primary);
+    margin-right: var(--spacing-xs);
+    font-size: 0.8rem;
+}
+
+.event-text {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+/* Stats Card - 2x2 그리드 */
+.stats-card {
+    overflow: hidden;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-sm);
+    height: calc(100% - 40px);
+}
+
+.stat-item {
+    padding: var(--spacing-sm);
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.stat-value {
+    font-size: 1rem;
+    font-weight: bold;
+    color: var(--text-primary);
+    text-align: right;
+}
+
+.stat-value.status-online {
+    color: var(--color-normal);
+}
+
+.stat-value.status-danger {
+    color: var(--color-danger);
+}
+
+.stat-value.status-warning {
+    color: var(--color-warning);
+}
+
+/* CCTV Popup */
+.cctv-container {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--spacing-lg);
+}
+
+.cctv-video {
+    background-color: var(--bg-primary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+}
+
+.cctv-video img {
+    width: 100%;
+    aspect-ratio: 4/3;
+    border-radius: var(--radius-sm);
+    background-color: #000;
+    object-fit: cover;
+}
+
+.cctv-controls {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-top: var(--spacing-md);
+    justify-content: center;
+}
+
+.btn-cctv-control {
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    padding: var(--spacing-sm) var(--spacing-md);
+    border-radius: var(--radius-md);
+    transition: all 0.3s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+}
+
+.btn-cctv-control:hover {
+    background-color: #475569;
+}
+
+.cctv-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+.info-section {
+    background-color: var(--bg-tertiary);
+    padding: var(--spacing-md);
+    border-radius: var(--radius-md);
+}
+
+.info-section h4 {
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+    font-size: 1.1rem;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+    color: var(--text-secondary);
+}
+
+.activity-list {
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+    background-color: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+    border-left: 2px solid #3b82f6;
+}
+
+.activity-time {
+    font-weight: bold;
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.activity-text {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin-top: var(--spacing-xs);
+}
+
+/* Detail Popup */
+.detail-container {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-lg);
+}
+
+/* 위치 정보와 센서 상태 가로 배치 */
+.detail-horizontal-section {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-lg);
+}
+
+.detail-section {
+    background-color: var(--bg-tertiary);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.detail-horizontal-section .detail-section {
+    max-height: none;
+}
+
+.detail-section:has(canvas) {
+    max-height: 350px;
+}
+
+.detail-section h3 {
+    margin-bottom: var(--spacing-md);
+    color: var(--text-primary);
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.detail-section canvas {
+    flex: 1;
+    min-height: 0;
+    max-height: 280px !important;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.detail-label {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.detail-value {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+/* Zone Selector Popup */
+.zone-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.zone-list-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md);
+    background-color: var(--bg-tertiary);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+}
+
+.zone-list-item:not(.disabled):hover {
+    background-color: #475569;
+    border-color: #3b82f6;
+}
+
+.zone-list-item.active {
+    border-color: #3b82f6;
+    background-color: rgba(59, 130, 246, 0.1);
+}
+
+.zone-list-item.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.zone-list-item i {
+    margin-left: auto;
+    color: #3b82f6;
+}
+
+.zone-list-item:not(.active) i {
+    display: none;
+}
+
+/* Error Popup */
+.error-message {
+    text-align: center;
+    padding: var(--spacing-xl);
+}
+
+.error-message i {
+    font-size: 4rem;
+    color: var(--color-warning);
+    margin-bottom: var(--spacing-lg);
+}
+
+.error-message p {
+    font-size: 1.1rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 1200px) {
+    .cctv-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .horizontal-layout {
+        flex-direction: column;
+    }
+    
+    .overall-status {
+        flex: 1;
+    }
+    
+    .status-grid {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+    
+    .status-card {
+        flex: 1;
+        min-width: 120px;
+    }
+}
+
+@media (max-width: 768px) {
+    .zone-box {
+        position: static;
+        margin-bottom: var(--spacing-md);
+    }
+    
+    .map-background {
+        min-height: auto;
+    }
+    
+    .legend-inline {
+        position: static;
+        margin-top: var(--spacing-md);
+        max-width: 100%;
+    }
+    
+    .sensor-values {
+        grid-template-columns: 1fr;
+    }
+    
+    .status-grid {
+        flex-direction: column;
+    }
+}

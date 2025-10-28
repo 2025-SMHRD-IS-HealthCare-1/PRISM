@@ -1,0 +1,22 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server/app.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "server/app.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "server/app.js"
+    }
+  ],
+  "env": {
+    "FASTAPI_URL": "http://localhost:8000"
+  }
+}
