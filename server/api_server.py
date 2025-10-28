@@ -16,7 +16,7 @@ PRISM 센서 데이터 FastAPI 서버 (WebSocket 지원)
      🌐 웹페이지 (브라우저)
 """
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -80,6 +80,23 @@ class BuzzerTrigger(BaseModel):
     reason: str
     duration: Optional[int] = 3000  # 기본 3초
 
+class FireEvent(BaseModel):
+    """오렌지파이 화재 감지 이벤트 모델"""
+    ts: str
+    source: str
+    label: str  # "Fire" 또는 "Smoke"
+    score: float  # 신뢰도 0.0 ~ 1.0
+    bbox: List[int]  # [x1, y1, x2, y2]
+    frame_size: List[int]  # [width, height]
+
+class VideoStream(BaseModel):
+    """오렌지파이 비디오 스트림 모델"""
+    device_id: str
+    timestamp: str
+    frame: str  # base64 encoded image
+    width: int
+    height: int
+
 # ============================================
 # 인메모리 데이터 저장
 # ============================================
@@ -89,6 +106,11 @@ LATEST: Dict[str, Dict[str, Any]] = {}
 
 # 히스토리 데이터 저장 {device_id: [data, data, ...]}
 HISTORY: Dict[str, List[Dict[str, Any]]] = {}
+
+# 🔥 오렌지파이 화재 이벤트 저장
+FIRE_EVENTS: List[Dict[str, Any]] = []
+LATEST_FIRE_EVENT: Optional[Dict[str, Any]] = None
+LATEST_VIDEO_STREAM: Optional[Dict[str, Any]] = None
 
 # WebSocket 연결 관리 (활성 브라우저 연결)
 active_connections: List[WebSocket] = []
@@ -614,7 +636,119 @@ async def get_zones():
     return zones
 
 # ============================================
-# 🔔 라즈베리파이 부저 트리거 API
+# � 오렌지파이 화재 감지 API
+# ============================================
+
+@app.post("/events/fire")
+async def receive_fire_event(
+    event: FireEvent,
+    x_api_key: Optional[str] = Header(default=None)
+):
+    """
+    오렌지파이에서 화재/연기 감지 이벤트 수신
+    
+    fire_gui1.py에서 화재 또는 연기를 감지하면 이 엔드포인트로 전송
+    수신한 데이터를 WebSocket으로 브라우저에 실시간 전달
+    """
+    global LATEST_FIRE_EVENT, FIRE_EVENTS
+    
+    # API Key 검증 (선택적)
+    API_KEY = "supersecret_key_please_change_me"
+    if x_api_key and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    
+    # 이벤트 저장
+    event_data = event.dict()
+    LATEST_FIRE_EVENT = event_data
+    FIRE_EVENTS.append(event_data)
+    
+    # 최근 100개만 유지
+    if len(FIRE_EVENTS) > 100:
+        FIRE_EVENTS = FIRE_EVENTS[-100:]
+    
+    print(f"🔥 화재 감지 이벤트 수신: {event.label} (신뢰도: {event.score:.2%})")
+    
+    # WebSocket으로 브라우저에 실시간 전달
+    websocket_message = {
+        "type": "fire_detection",
+        "ts": event.ts,
+        "source": event.source,
+        "label": event.label,
+        "score": event.score,
+        "bbox": event.bbox,
+        "frame_size": event.frame_size
+    }
+    
+    await manager.broadcast(websocket_message)
+    
+    return {
+        "ok": True,
+        "received_at": datetime.now().isoformat()
+    }
+
+@app.post("/stream/video")
+async def receive_video_stream(
+    stream: VideoStream,
+    x_api_key: Optional[str] = Header(default=None)
+):
+    """
+    오렌지파이에서 비디오 스트림 수신
+    
+    Base64로 인코딩된 카메라 영상을 실시간으로 수신하여
+    WebSocket으로 브라우저에 전달
+    """
+    global LATEST_VIDEO_STREAM
+    
+    # API Key 검증 (선택적)
+    API_KEY = "supersecret_key_please_change_me"
+    if x_api_key and x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    
+    # 스트림 저장
+    stream_data = stream.dict()
+    LATEST_VIDEO_STREAM = stream_data
+    
+    # WebSocket으로 브라우저에 실시간 전달
+    websocket_message = {
+        "type": "video_stream",
+        "device_id": stream.device_id,
+        "timestamp": stream.timestamp,
+        "frame": stream.frame,
+        "width": stream.width,
+        "height": stream.height
+    }
+    
+    await manager.broadcast(websocket_message)
+    
+    return {
+        "ok": True,
+        "received_at": datetime.now().isoformat()
+    }
+
+@app.get("/events/fire/latest")
+async def get_latest_fire_event():
+    """최신 화재 감지 이벤트 조회"""
+    if LATEST_FIRE_EVENT:
+        return LATEST_FIRE_EVENT
+    return {"message": "No fire event received yet"}
+
+@app.get("/events/fire/history")
+async def get_fire_history():
+    """화재 이벤트 히스토리 조회"""
+    return {
+        "total": len(FIRE_EVENTS),
+        "events": FIRE_EVENTS
+    }
+
+@app.get("/stream/video/latest")
+async def get_latest_video_stream():
+    """최신 비디오 스트림 조회"""
+    if LATEST_VIDEO_STREAM:
+        return LATEST_VIDEO_STREAM
+    return {"message": "No video stream received yet"}
+
+# ============================================
+# �🔔 라즈베리파이 부저 트리거 API
 # ============================================
 
 @app.post("/api/buzzer/trigger")

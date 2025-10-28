@@ -9,22 +9,26 @@
 ## 🎯 주요 기능
 
 ### 1. 화재/연기 감지 자동 알림
+
 - 오렌지파이가 화재 또는 연기 감지
 - **무조건 위험 상태로 전환**
 - TEST BOX 구역이 빨간색으로 표시
 - 최상단 고정 이벤트 추가
 
 ### 2. CCTV 실시간 스트림
+
 - 오렌지파이의 카메라 영상을 Base64로 실시간 전송
 - 대시보드에서 CCTV 버튼 클릭 시 실시간 영상 표시
 - 화재 감지 시 해당 프레임도 함께 표시
 
 ### 3. 라즈베리파이 부저 자동 울림
+
 - 화재 감지 시 WebSocket으로 명령 전달
 - 라즈베리파이가 부저를 자동으로 울림
 - 5초간 경보음 발생
 
 ### 4. 브라우저 알림
+
 - 화재 감지 시 즉시 브라우저 알림
 - 신뢰도(confidence) 정보 포함
 - 알림 클릭 시 대시보드로 이동
@@ -51,7 +55,7 @@
 │  - WebSocket 브로드  │
 │  - 부저 트리거 API   │
 └──────────┬───────────┘
-           │ 
+           │
            ├───────────────────────┐
            │                       │
            ▼                       ▼
@@ -76,7 +80,7 @@
   "ts": "2025-10-28T12:34:56.789Z",
   "source": "orangepi_fire_detector_01",
   "type": "fire_detection",
-  "label": "Fire",  // 또는 "Smoke"
+  "label": "Fire", // 또는 "Smoke"
   "score": 0.89,
   "bbox": [120, 45, 320, 280],
   "frame_size": [640, 480]
@@ -134,6 +138,7 @@ python3 raspberry_pi_sensor.py
 ```
 
 실행 시 출력:
+
 ```
 ✅ WebSocket 연결 성공 (부저 리스너 활성화)
 📊 데이터 수집 시작...
@@ -147,6 +152,7 @@ python3 fire_gui1.py
 ```
 
 프로그램이 자동으로:
+
 - API 서버에 연결
 - 화재/연기 감지 시 WebSocket으로 메시지 전송
 - 비디오 스트림 실시간 전송
@@ -205,6 +211,7 @@ API_SERVER = os.getenv("API_SERVER", "http://localhost:8000")
 ```
 
 환경 변수로 설정:
+
 ```bash
 export API_SERVER=https://prism-api-ay8q.onrender.com
 export DEVICE_ID=rpi-01
@@ -216,12 +223,14 @@ export DEVICE_ID=rpi-01
 
 ```javascript
 const CONFIG = {
-  API_BASE_URL: window.location.hostname === "localhost"
-    ? "http://localhost:8000"
-    : "https://prism-api-ay8q.onrender.com",
-  WS_BASE_URL: window.location.hostname === "localhost"
-    ? "ws://localhost:8000"
-    : "wss://prism-api-ay8q.onrender.com",
+  API_BASE_URL:
+    window.location.hostname === "localhost"
+      ? "http://localhost:8000"
+      : "https://prism-api-ay8q.onrender.com",
+  WS_BASE_URL:
+    window.location.hostname === "localhost"
+      ? "ws://localhost:8000"
+      : "wss://prism-api-ay8q.onrender.com",
 };
 ```
 
@@ -232,11 +241,13 @@ const CONFIG = {
 ### 화재 감지가 안 될 때
 
 1. **오렌지파이 프로그램이 실행 중인지 확인**
+
    ```bash
    ps aux | grep fire_gui1.py
    ```
 
 2. **API 서버 연결 확인**
+
    ```bash
    curl https://prism-api-ay8q.onrender.com/health
    ```
@@ -248,6 +259,7 @@ const CONFIG = {
 ### CCTV 스트림이 안 나올 때
 
 1. **오렌지파이가 video_stream 메시지를 전송하는지 확인**
+
    ```bash
    # API 서버 로그 확인
    journalctl -u prism-api -f
@@ -256,23 +268,26 @@ const CONFIG = {
 2. **브라우저 콘솔에서 확인**
    ```javascript
    // 개발자 도구 → Console
-   console.log(cctvStreamFrame);  // Base64 데이터 확인
+   console.log(cctvStreamFrame); // Base64 데이터 확인
    ```
 
 ### 부저가 안 울릴 때
 
 1. **websocket-client 설치 확인**
+
    ```bash
    pip list | grep websocket
    ```
 
 2. **WebSocket 리스너 활성화 확인**
+
    ```bash
    # raspberry_pi_sensor.py 실행 시 출력 확인
    ✅ WebSocket 연결 성공 (부저 리스너 활성화)
    ```
 
 3. **GPIO 핀 연결 확인**
+
    ```python
    # raspberry_pi_sensor.py에서 GPIO 설정 주석 해제
    import RPi.GPIO as GPIO
@@ -301,6 +316,7 @@ const CONFIG = {
 부저를 울리는 명령을 WebSocket으로 전달합니다.
 
 **요청 본문:**
+
 ```json
 {
   "zone": "testbox",
@@ -310,6 +326,7 @@ const CONFIG = {
 ```
 
 **응답:**
+
 ```json
 {
   "status": "success",
@@ -325,6 +342,7 @@ const CONFIG = {
 ```
 
 **cURL 예제:**
+
 ```bash
 curl -X POST https://prism-api-ay8q.onrender.com/api/buzzer/trigger \
   -H "Content-Type: application/json" \
@@ -340,10 +358,12 @@ curl -X POST https://prism-api-ay8q.onrender.com/api/buzzer/trigger \
 ## 🔐 보안 고려사항
 
 1. **API Key 추가** (권장)
+
    - 현재는 API Key 없이 동작
    - 프로덕션 환경에서는 `X-Api-Key` 헤더 추가 권장
 
 2. **HTTPS/WSS 사용**
+
    - Vercel: 자동으로 HTTPS
    - Render: 자동으로 HTTPS + WSS
 

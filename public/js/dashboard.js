@@ -280,7 +280,7 @@ function connectWebSocket() {
 // 🔥 오렌지파이 화재/연기 감지 처리
 function handleFireDetection(message) {
   console.log("🔥 화재/연기 감지:", message);
-  
+
   const label = message.label || "Unknown";
   const score = message.score || 0;
   const source = message.source || "orangepi_fire_detector_01";
@@ -291,13 +291,13 @@ function handleFireDetection(message) {
 
   // 🚨 무조건 위험 상태로 전환
   fireDetectionActive = true;
-  
+
   // 센서 데이터를 위험 상태로 강제 설정
   sensorData[zone].status = "danger";
-  
+
   // 구역 상태 업데이트
   updateZoneStatus(zone, "danger");
-  
+
   // 이벤트 추가 (최상단 고정)
   const eventMessage = `🔥 ${label} 감지! (신뢰도: ${confidence}%)`;
   addEvent("danger", eventMessage);
@@ -327,7 +327,7 @@ function handleFireDetection(message) {
 // 📹 오렌지파이 비디오 스트림 처리
 function handleVideoStream(message) {
   console.log("📹 비디오 스트림 수신");
-  
+
   // Base64 이미지 프레임 저장
   const frame = message.frame;
   const width = message.width || 640;
@@ -335,10 +335,13 @@ function handleVideoStream(message) {
 
   if (frame) {
     cctvStreamFrame = `data:image/jpeg;base64,${frame}`;
-    
+
     // CCTV 팝업이 열려있으면 실시간 업데이트
     const cctvStream = document.getElementById("cctv-stream");
-    if (cctvStream && cctvStream.parentElement.closest('.popup').classList.contains('active')) {
+    if (
+      cctvStream &&
+      cctvStream.parentElement.closest(".popup").classList.contains("active")
+    ) {
       cctvStream.src = cctvStreamFrame;
     }
   }
@@ -348,7 +351,7 @@ function handleVideoStream(message) {
 async function triggerBuzzer(zone, reason) {
   try {
     console.log(`🔔 부저 울리기: ${zone}, 사유: ${reason}`);
-    
+
     const response = await fetch(`${CONFIG.API_BASE_URL}/api/buzzer/trigger`, {
       method: "POST",
       headers: {
@@ -1132,7 +1135,7 @@ function openCCTV(zone) {
 
   // 🔥 오렌지파이 CCTV 스트림 설정
   const cctvStream = document.getElementById("cctv-stream");
-  
+
   // 캐시된 프레임이 있으면 즉시 표시
   if (cctvStreamFrame) {
     cctvStream.src = cctvStreamFrame;
