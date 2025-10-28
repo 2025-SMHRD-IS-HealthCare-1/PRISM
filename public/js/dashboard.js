@@ -154,8 +154,7 @@ function connectWebSocket() {
             });
           }
 
-          // 센서 연결 상태 업데이트 (데이터 수신 = 연결됨)
-          updateSensorConnectionStatus(zone, true);
+          // updateSensorConnectionStatus는 updateSensorDataFromWebSocket 내부에서 처리
         } else if (message.type === "init") {
           // 초기 데이터 수신
           console.log("📊 초기 데이터 수신:", message.data);
@@ -288,14 +287,13 @@ function updateSensorDataFromWebSocket(zone, data, message) {
   // UI 업데이트 (현재 선택된 구역만)
   if (zone === currentZone) {
     updateSensorDisplay(data);
-    // 현재 선택된 구역의 연결 상태 UI 업데이트
-    updateConnectionStatus(true);
+    // 연결 상태 UI는 updateSensorConnectionStatus에서 처리
   }
 
   updateZoneStatus(zone);
   updateOverallStatus();
 
-  // 센서 연결 상태 업데이트 (타임스탬프 갱신) - 모든 구역에 대해 실행
+  // 센서 연결 상태 업데이트 (타임스탬프 갱신 및 연결 상태 관리)
   updateSensorConnectionStatus(zone, true);
 }
 
@@ -454,7 +452,7 @@ function updateSensorData(data) {
   updateSensorDisplay(data);
   updateZoneStatus(data.zone);
   updateOverallStatus();
-  updateConnectionStatus(true);
+  // updateConnectionStatus는 WebSocket에서 처리하므로 제거
   updateSensorCount();
 }
 
@@ -1303,12 +1301,24 @@ function updateSensorConnectionStatus(zone, connected) {
     sensorConnectionStatus[zone].connected = true;
     addEvent("normal", `${getZoneName(zone)} 센서 연결됨`);
     updateSensorCount();
+    
+    // 현재 선택된 구역이면 UI 업데이트
+    if (zone === currentZone) {
+      updateConnectionStatus(true);
+    }
   } else if (wasConnected && connected) {
     // 연결 유지 (이미 연결된 상태에서 데이터 계속 수신)
     sensorConnectionStatus[zone].connected = true;
+    // 연결 유지 상태에서는 이벤트나 UI 업데이트 불필요
   } else if (wasConnected && !connected) {
     // 연결 → 미연결 (연결 끊김)
     sensorConnectionStatus[zone].connected = false;
+    updateSensorCount();
+    
+    // 현재 선택된 구역이면 UI 업데이트
+    if (zone === currentZone) {
+      updateConnectionStatus(false);
+    }
   }
 }
 
@@ -1416,15 +1426,14 @@ function startSensorTimeoutCheck() {
           console.warn(
             `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
           );
-          // 연결 상태를 false로 변경
-          status.connected = false;
+          
+          // updateSensorConnectionStatus를 통해 일관성 있게 처리
+          updateSensorConnectionStatus(zone, false);
           addEvent("warning", `${getZoneName(zone)} 센서 연결 끊김`);
-          updateSensorCount();
           updateZoneStatusToInactive(zone);
 
-          // 현재 선택된 구역의 타임아웃이면 UI 업데이트
+          // 현재 선택된 구역의 타임아웃이면 미연결 상태 표시
           if (zone === currentZone) {
-            updateConnectionStatus(false);
             showDisconnectedState();
           }
         }
