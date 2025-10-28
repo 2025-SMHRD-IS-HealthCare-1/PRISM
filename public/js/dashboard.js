@@ -11,7 +11,7 @@ const CONFIG = {
   UPDATE_INTERVAL: 5000, // 5초마다 업데이트
   CHART_UPDATE_INTERVAL: 30000, // 30초마다 차트 업데이트
   EVENT_UPDATE_INTERVAL: 60000, // 1분마다 이벤트 업데이트
-  SENSOR_TIMEOUT: 30000, // 30초 동안 데이터 없으면 미연결로 간주
+  SENSOR_TIMEOUT: 60000, // 60초(1분) 동안 데이터 없으면 미연결로 간주
   EVENT_DUPLICATE_TIMEOUT: 60000, // 1분 내 중복 이벤트 무시
 };
 
@@ -109,10 +109,11 @@ function connectWebSocket() {
     websocket.onopen = () => {
       console.log("✅ WebSocket 연결 성공");
       isConnected = true;
-      updateConnectionStatus(true);
+      // WebSocket 연결은 서버 통신 연결이지 센서 연결이 아님
+      // 센서 연결 상태는 데이터를 받을 때 updateSensorConnectionStatus에서 처리
 
-      // 센서 연결 이벤트
-      addEvent("normal", "센서 연결 완료");
+      // WebSocket 연결 이벤트
+      addEvent("normal", "서버 연결 완료");
 
       // 재연결 타이머 클리어
       if (reconnectTimer) {
@@ -219,15 +220,13 @@ function connectWebSocket() {
     websocket.onerror = (error) => {
       console.error("❌ WebSocket 오류:", error);
       isConnected = false;
-      updateConnectionStatus(false);
-      addEvent("warning", "센서 연결 오류 발생");
+      addEvent("warning", "서버 연결 오류 발생");
     };
 
     websocket.onclose = () => {
       console.log("🔌 WebSocket 연결 종료");
       isConnected = false;
-      updateConnectionStatus(false);
-      addEvent("warning", "센서 연결 종료");
+      addEvent("warning", "서버 연결 종료");
 
       // 5초 후 재연결 시도
       if (!reconnectTimer) {
@@ -240,7 +239,7 @@ function connectWebSocket() {
   } catch (error) {
     console.error("WebSocket 연결 실패:", error);
     isConnected = false;
-    updateConnectionStatus(false);
+    addEvent("warning", "서버 연결 실패");
   }
 }
 
@@ -1302,9 +1301,12 @@ function updateSensorConnectionStatus(zone, connected) {
     sensorConnectionStatus[zone].connected = true;
     addEvent("normal", `${getZoneName(zone)} 센서 연결됨`);
     updateSensorCount();
-  } else if (connected && !wasConnected) {
-    // 연결 유지 (이미 연결된 상태)
+  } else if (wasConnected && connected) {
+    // 연결 유지 (이미 연결된 상태에서 데이터 계속 수신)
     sensorConnectionStatus[zone].connected = true;
+  } else if (wasConnected && !connected) {
+    // 연결 → 미연결 (연결 끊김)
+    sensorConnectionStatus[zone].connected = false;
   }
 }
 
@@ -1407,7 +1409,7 @@ function startSensorTimeoutCheck() {
       if (status.connected && status.lastUpdate) {
         const timeSinceUpdate = now - status.lastUpdate;
 
-        // 30초 이상 데이터 없으면 미연결로 처리
+        // 60초(1분) 이상 데이터 없으면 미연결로 처리
         if (timeSinceUpdate > CONFIG.SENSOR_TIMEOUT) {
           console.warn(
             `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
