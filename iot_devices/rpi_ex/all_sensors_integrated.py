@@ -2,6 +2,25 @@
 # Raspberry Pi: Flame(GPIO) + MQ-2(MCP3008/SPI) + DS18B20(1-Wire) + PMS7003M(UART) + Buzzer
 # ★ 수정: 센서 데이터를 Render 서버로 HTTP POST 전송
 # Ctrl+C 로 종료
+#
+# ═══════════════════════ 데이터 구조 ═══════════════════════
+# 서버로 전송되는 JSON 형식:
+# {
+#   "device_id": "rpi-01",
+#   "data": {
+#     "flame": false,              # 불꽃 감지 (boolean)
+#     "gas": 126,                  # 가스 농도 원시값 (0~1023)
+#     "gas_voltage": 0.406,        # 가스 센서 전압 (V)
+#     "temperature": 23.56,        # 온도 (°C)
+#     "pm1": 4,                    # 미세먼지 PM1.0 (μg/m³)
+#     "pm25": 1,                   # 미세먼지 PM2.5 (μg/m³)
+#     "pm10": 4,                   # 미세먼지 PM10 (μg/m³)
+#     "gas_delta": 22              # 가스 변화량 (baseline 대비)
+#   },
+#   "timestamp": 1761621399.5664232,
+#   "datetime": "2025-10-28T03:16:39.566423"
+# }
+# ═══════════════════════════════════════════════════════════
 
 import threading, time, sys, glob, struct, json, os
 import RPi.GPIO as GPIO
@@ -46,19 +65,30 @@ W1_BASE = '/sys/bus/w1/devices/'
 PMS_PORT = "/dev/serial0"      # 필요 시 '/dev/ttyAMA0' 또는 '/dev/ttyS0'
 PMS_BAUD = 9600
 
-# 임계치 (원하는 값으로 조정)
-GAS_THRESHOLD_RAW = 300        # MQ-2 원시값 절대 임계
-PM25_THRESHOLD    = 80         # μg/m³
-FLAME_ALERT       = True       # 불꽃 감지 시 알람
-TEMP_THRESHOLD    = 30.0       # None이면 온도 무시
+# ═══════════════════════ 임계값 설정 ═══════════════════════
+# 불꽃 감지 (flame)
+FLAME_ALERT       = True       # 불꽃 감지 시 알람 ON
+
+# 온도 (temperature) - 섭씨 기준
+TEMP_THRESHOLD    = 35.0       # °C (None이면 온도 알람 무시)
+TEMP_WARNING      = 30.0       # °C (경고 수준)
+
+# 가스 농도 (gas, gas_voltage)
+GAS_THRESHOLD_RAW = 200        # MQ-2 원시값 (0~1023)
+GAS_VOLTAGE_MAX   = 2.5        # V (전압 기준)
+GAS_DELTA_ALERT   = 50         # baseline 대비 급격한 증가량(Δ) 감지
+
+# 미세먼지 (pm1, pm25, pm10) - μg/m³ 기준
+PM1_THRESHOLD     = 50         # PM1.0 초미세입자
+PM25_THRESHOLD    = 35         # PM2.5 (WHO 기준: 15, 한국 보통: 35)
+PM10_THRESHOLD    = 100        # PM10 (WHO 기준: 45, 한국 보통: 100)
 
 # 알람 래칭(최소 울림시간)
-ALARM_LATCH_SEC   = 2.0
+ALARM_LATCH_SEC   = 3.0        # 초
 
-# MQ-2 보정/감지 파라미터
+# MQ-2 가스 센서 보정 파라미터
 MQ2_BASELINE_SEC  = 10         # 시작 후 10초는 기준선 학습
 MQ2_EMA_ALPHA     = 0.20       # EMA 평활 계수 (0.1~0.3 권장)
-MQ2_DELTA_ALERT   = 60         # baseline 대비 증가량(Δ) 임계
 
 # ───────────────────────── 공유 상태 ─────────────────────────
 STATE = {
@@ -245,21 +275,64 @@ _prev_alarm = None
 _latch_until = 0.0
 
 def alarm_check():
+    """임계값 체크 및 알람 제어"""
     global _prev_alarm, _latch_until
+    
     with STATE_LOCK:
         flame     = bool(STATE.get("flame") or False)
         mq2_delta = STATE.get("mq2_delta") or 0
         mq2_raw   = STATE.get("mq2_raw") or 0
+        gas_volt  = STATE.get("mq2_voltage") or 0.0
+        pm1       = STATE.get("pm1") or 0
         pm25      = STATE.get("pm25") or 0
+        pm10      = STATE.get("pm10") or 0
         tempc     = STATE.get("temp_c")
 
     alarm = False
-    if flame == FLAME_ALERT:          alarm = True
-    if mq2_delta > MQ2_DELTA_ALERT:   alarm = True
-    if mq2_raw   > GAS_THRESHOLD_RAW: alarm = True
-    if pm25      > PM25_THRESHOLD:    alarm = True
-    if (TEMP_THRESHOLD is not None) and (tempc is not None) and (tempc > TEMP_THRESHOLD):
+    alarm_reasons = []
+    
+    # 1. 불꽃 감지 (flame)
+    if flame == FLAME_ALERT:
         alarm = True
+        alarm_reasons.append("🔥 불꽃 감지")
+    
+    # 2. 가스 농도 (gas)
+    if mq2_raw > GAS_THRESHOLD_RAW:
+        alarm = True
+        alarm_reasons.append(f"⚠️ 가스 농도 높음 ({mq2_raw})")
+    
+    # 3. 가스 전압 (gas_voltage)
+    if gas_volt > GAS_VOLTAGE_MAX:
+        alarm = True
+        alarm_reasons.append(f"⚠️ 가스 전압 높음 ({gas_volt:.2f}V)")
+    
+    # 4. 가스 급증 감지 (gas_delta)
+    if mq2_delta > GAS_DELTA_ALERT:
+        alarm = True
+        alarm_reasons.append(f"📈 가스 급증 (Δ={mq2_delta})")
+    
+    # 5. 온도 (temperature)
+    if (TEMP_THRESHOLD is not None) and (tempc is not None):
+        if tempc > TEMP_THRESHOLD:
+            alarm = True
+            alarm_reasons.append(f"🌡️ 고온 ({tempc}°C)")
+        elif tempc > TEMP_WARNING:
+            alarm_reasons.append(f"⚠️ 온도 경고 ({tempc}°C)")
+    
+    # 6. 미세먼지 PM1.0
+    if pm1 > PM1_THRESHOLD:
+        alarm = True
+        alarm_reasons.append(f"💨 PM1.0 높음 ({pm1})")
+    
+    # 7. 미세먼지 PM2.5
+    if pm25 > PM25_THRESHOLD:
+        alarm = True
+        alarm_reasons.append(f"💨 PM2.5 높음 ({pm25})")
+    
+    # 8. 미세먼지 PM10
+    if pm10 > PM10_THRESHOLD:
+        alarm = True
+        alarm_reasons.append(f"💨 PM10 높음 ({pm10})")
 
     now = time.time()
     if alarm:
@@ -267,7 +340,9 @@ def alarm_check():
     latched = alarm or (now < _latch_until)
 
     if _prev_alarm != latched:
-        print(f"[ALARM] -> {latched} (flame={flame}, Δ={mq2_delta}, raw={mq2_raw}, pm25={pm25}, temp={tempc})")
+        status = "🚨 알람 ON" if latched else "✅ 알람 OFF"
+        reasons = " | ".join(alarm_reasons) if alarm_reasons else "정상"
+        print(f"[ALARM] {status} - {reasons}")
         _prev_alarm = latched
 
     set_buzzer(latched)
