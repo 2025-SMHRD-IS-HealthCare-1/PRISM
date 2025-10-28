@@ -224,7 +224,7 @@ function connectWebSocket() {
     websocket.onerror = (error) => {
       console.error("❌ WebSocket 오류:", error);
       isConnected = false;
-      
+
       // ⚠️ 중요: WebSocket 오류 시 센서 연결 상태를 초기화하지 않음
       // 센서 연결 상태는 타임아웃(60초)으로만 관리
     };
@@ -232,10 +232,16 @@ function connectWebSocket() {
     websocket.onclose = () => {
       console.log("🔌 WebSocket 연결 종료");
       isConnected = false;
-      
-      // ⚠️ 중요: WebSocket 연결 종료 시 센서 연결 상태를 초기화하지 않음
-      // 센서 연결 상태는 타임아웃(60초)으로만 관리
-      // WebSocket 재연결 후 데이터가 계속 들어오면 센서는 연결 상태 유지
+
+      // ✅ WebSocket 연결 종료 시 모든 센서를 미연결로 전환
+      Object.keys(sensorConnectionStatus).forEach((zone) => {
+        if (sensorConnectionStatus[zone].connected) {
+          updateSensorConnectionStatus(zone, false);
+        }
+      });
+
+      // 현재 선택된 구역의 UI를 미연결 상태로 표시
+      showDisconnectedState();
 
       // 5초 후 재연결 시도
       if (!reconnectTimer) {
