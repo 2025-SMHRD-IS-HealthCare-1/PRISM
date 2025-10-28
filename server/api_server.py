@@ -60,6 +60,20 @@ class SensorData(BaseModel):
     flame: bool
     timestamp: Optional[datetime] = None
 
+class CCTVFireAlert(BaseModel):
+    """CCTV 화재 감지 알림 모델"""
+    zone: str
+    confidence: float
+    frame_url: Optional[str] = None
+    timestamp: Optional[float] = None
+
+class SensorConnectionAlert(BaseModel):
+    """센서 연결 상태 알림 모델"""
+    zone: str
+    device_id: str
+    connected: bool
+    timestamp: Optional[float] = None
+
 # ============================================
 # 인메모리 데이터 저장
 # ============================================
@@ -404,20 +418,6 @@ async def get_devices():
 # ============================================
 # 이벤트 알림 엔드포인트 (CCTV, 센서 연결 상태)
 # ============================================
-
-class CCTVFireAlert(BaseModel):
-    """CCTV 화재 감지 알림 모델"""
-    zone: str  # 구역 이름 (testbox, warehouse, inspection, machine)
-    confidence: float  # 신뢰도 (0.0 ~ 1.0)
-    frame_url: Optional[str] = None  # 화재 감지 프레임 이미지 URL (선택)
-    timestamp: Optional[float] = None
-
-class SensorConnectionAlert(BaseModel):
-    """센서 연결 상태 알림 모델"""
-    zone: str  # 구역 이름
-    device_id: str  # 디바이스 ID
-    connected: bool  # 연결 상태 (True: 연결됨, False: 연결 끊김)
-    timestamp: Optional[float] = None
 
 @app.post("/alert/cctv_fire")
 async def cctv_fire_alert(alert: CCTVFireAlert):
