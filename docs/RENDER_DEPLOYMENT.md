@@ -8,12 +8,14 @@
 ### 배포 전 vs 배포 후
 
 **배포 전:**
+
 ```python
 # 라즈베리파이 설정
 API_SERVER="http://192.168.1.10:8000"  # ❌ 로컬 IP (와이파이 바뀌면 안됨)
 ```
 
 **배포 후:**
+
 ```python
 # 라즈베리파이 설정
 API_SERVER="https://prism-api-xxxx.onrender.com"  # ✅ 어디서든 접속 가능!
@@ -53,6 +55,7 @@ git push -u origin main
 4. 다음 설정 입력:
 
 **기본 설정:**
+
 - **Name**: `prism-api`
 - **Region**: `Singapore` (한국과 가장 가까움)
 - **Branch**: `main`
@@ -60,7 +63,8 @@ git push -u origin main
 - **Runtime**: `Python 3`
 
 **빌드 & 배포 설정:**
-- **Build Command**: 
+
+- **Build Command**:
   ```bash
   pip install -r requirements.txt
   ```
@@ -70,6 +74,7 @@ git push -u origin main
   ```
 
 **고급 설정:**
+
 - **Health Check Path**: `/health`
 - **Plan**: `Free` (무료)
 
@@ -84,6 +89,7 @@ git push -u origin main
 ```
 
 **테스트:**
+
 ```bash
 # 헬스 체크
 curl https://prism-api-xxxx.onrender.com/health
@@ -126,8 +132,8 @@ source ~/.bashrc
 const ws = new WebSocket("wss://prism-api-xxxx.onrender.com/ws");
 
 ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log("실시간 데이터:", data);
+  const data = JSON.parse(event.data);
+  console.log("실시간 데이터:", data);
 };
 ```
 
@@ -145,6 +151,7 @@ ws.onmessage = (event) => {
 3. `render.yaml` 자동 감지 → **"Apply"** 클릭
 
 `render.yaml` 내용:
+
 ```yaml
 services:
   - type: web
@@ -171,6 +178,7 @@ services:
 - ✅ 무제한 대역폭
 
 **슬립 모드 해결 방법:**
+
 - UptimeRobot 같은 무료 모니터링 서비스 사용
 - 5분마다 `/health` 엔드포인트 호출
 
@@ -200,15 +208,19 @@ Render 대시보드에서 환경 변수 추가:
 ## 🆘 문제 해결
 
 ### "Application failed to respond"
+
 → Start Command 확인: `uvicorn server.api_server:app --host 0.0.0.0 --port $PORT`
 
 ### "Module not found"
+
 → `requirements.txt` 파일 확인, 모든 패키지 포함 여부 체크
 
 ### 슬립 모드에서 깨어나지 않음
+
 → Render 로그 확인, 첫 요청 시 30초 정도 대기
 
 ### WebSocket 연결 실패
+
 → `wss://` (secure websocket) 사용 확인
 
 ---

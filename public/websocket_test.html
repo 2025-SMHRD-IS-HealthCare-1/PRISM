@@ -201,8 +201,8 @@
       let reconnectAttempts = 0;
       const maxReconnectAttempts = 10;
 
-      // WebSocket 서버 주소 (환경에 맞게 변경)
-      const WS_URL = "ws://localhost:8000/ws";
+      // WebSocket 서버 주소 (Render 배포)
+      const WS_URL = "wss://prism-api-ay8q.onrender.com/ws";
 
       function log(message, type = "info") {
         const logBox = document.getElementById("logBox");
