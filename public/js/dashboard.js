@@ -318,15 +318,18 @@ function showDangerAlert(level, reasons) {
 
 // Data Updates
 function startDataUpdates() {
-  // 초기 데이터 로드
-  fetchSensorData();
+  // WebSocket을 사용하므로 HTTP 폴링은 비활성화
+  // WebSocket이 실시간으로 데이터를 전송하므로 주기적 fetch는 불필요
 
-  // 주기적 업데이트 (새로고침 방지)
-  if (updateInterval) clearInterval(updateInterval);
-  if (chartUpdateInterval) clearInterval(chartUpdateInterval);
+  // 초기 데이터 로드 (선택 사항 - WebSocket으로 받을 수 있음)
+  // fetchSensorData();
 
-  updateInterval = setInterval(fetchSensorData, CONFIG.UPDATE_INTERVAL);
+  // 주기적 업데이트는 WebSocket이 처리하므로 주석 처리
+  // if (updateInterval) clearInterval(updateInterval);
+  // updateInterval = setInterval(fetchSensorData, CONFIG.UPDATE_INTERVAL);
+
   // 차트는 덜 자주 업데이트 (30초)
+  if (chartUpdateInterval) clearInterval(chartUpdateInterval);
   chartUpdateInterval = setInterval(
     loadHistoricalData,
     CONFIG.CHART_UPDATE_INTERVAL
@@ -334,6 +337,8 @@ function startDataUpdates() {
 }
 
 async function fetchSensorData() {
+  // 이 함수는 WebSocket 사용 시 호출되지 않음 (startDataUpdates에서 비활성화됨)
+  // WebSocket이 끊어졌을 때 백업용으로만 사용 가능
   try {
     // FastAPI 엔드포인트에서 센서 데이터 가져오기
     const response = await fetch(
@@ -351,14 +356,11 @@ async function fetchSensorData() {
     }
 
     const data = await response.json();
-    isConnected = true;
     lastUpdateTime = new Date();
     updateSensorData(data);
-    updateConnectionStatus(true);
+    // updateConnectionStatus는 WebSocket에서만 처리
   } catch (error) {
     console.error("센서 데이터 가져오기 실패:", error);
-    isConnected = false;
-    updateConnectionStatus(false);
     // 센서 미연결 상태 표시
     showDisconnectedState();
   }
