@@ -289,13 +289,14 @@ function updateSensorDataFromWebSocket(zone, data, message) {
   // UI 업데이트 (현재 선택된 구역만)
   if (zone === currentZone) {
     updateSensorDisplay(data);
+    // 현재 선택된 구역의 연결 상태 UI 업데이트
+    updateConnectionStatus(true);
   }
 
   updateZoneStatus(zone);
   updateOverallStatus();
-  updateConnectionStatus(true);
 
-  // 센서 연결 상태 업데이트 (타임스탬프 갱신)
+  // 센서 연결 상태 업데이트 (타임스탬프 갱신) - 모든 구역에 대해 실행
   updateSensorConnectionStatus(zone, true);
 }
 
@@ -564,8 +565,11 @@ function updateStatusDisplay(data) {
 }
 
 function updateZoneStatus(zone) {
-  if (!isConnected) {
-    // 연결 안 됨 - 비활성 상태로 표시
+  // 센서 연결 상태 먼저 확인
+  const isConnectedToZone = sensorConnectionStatus[zone]?.connected || false;
+
+  if (!isConnectedToZone) {
+    // 센서 미연결 - 비활성 상태로 표시
     updateZoneStatusToInactive(zone);
     return;
   }
@@ -577,7 +581,10 @@ function updateZoneStatus(zone) {
   const zoneBox = document.querySelector(`.zone-${zone}`);
   if (zoneBox) {
     const statusIndicator = zoneBox.querySelector(".zone-status");
-    statusIndicator.className = `zone-status ${statusClass}`;
+    if (statusIndicator) {
+      // 센서 연결됨 - LED 표시등 켜기
+      statusIndicator.className = `zone-status ${statusClass}`;
+    }
 
     // 🔥 위험 상태일 때 박스 전체를 빨간색으로 표시
     if (status === "danger") {
@@ -605,7 +612,15 @@ function updateZoneStatusToInactive(zone) {
   const zoneBox = document.querySelector(`.zone-${zone}`);
   if (zoneBox) {
     const statusIndicator = zoneBox.querySelector(".zone-status");
-    statusIndicator.className = "zone-status status-inactive";
+    if (statusIndicator) {
+      // 센서 미연결 - LED 표시등 끄기 (회색)
+      statusIndicator.className = "zone-status status-inactive";
+    }
+
+    // 박스 스타일 초기화
+    zoneBox.style.borderColor = "";
+    zoneBox.style.backgroundColor = "";
+    zoneBox.style.boxShadow = "";
   }
 }
 
@@ -1027,10 +1042,18 @@ function selectZone(zone) {
   document.getElementById("selected-zone-name").textContent = getZoneName(zone);
   updateZoneStatus(zone);
 
-  closePopup("zone-selector-popup");
+  // 센서 연결 상태 확인 및 UI 업데이트
+  const isZoneConnected = sensorConnectionStatus[zone]?.connected || false;
+  updateConnectionStatus(isZoneConnected);
 
-  // 새로운 구역 데이터 가져오기
-  fetchSensorData();
+  // 연결된 경우 센서 데이터 표시, 미연결 시 미연결 상태 표시
+  if (isZoneConnected && sensorData[zone]) {
+    updateSensorDisplay(sensorData[zone]);
+  } else {
+    showDisconnectedState();
+  }
+
+  closePopup("zone-selector-popup");
 }
 
 function showPopup(popupId) {
@@ -1389,11 +1412,17 @@ function startSensorTimeoutCheck() {
           console.warn(
             `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
           );
-          // 연결 상태를 false로 변경 (이벤트는 1회만 발생하도록 addEvent에서 중복 체크)
+          // 연결 상태를 false로 변경
           status.connected = false;
           addEvent("warning", `${getZoneName(zone)} 센서 연결 끊김`);
           updateSensorCount();
           updateZoneStatusToInactive(zone);
+
+          // 현재 선택된 구역의 타임아웃이면 UI 업데이트
+          if (zone === currentZone) {
+            updateConnectionStatus(false);
+            showDisconnectedState();
+          }
         }
       }
     });
