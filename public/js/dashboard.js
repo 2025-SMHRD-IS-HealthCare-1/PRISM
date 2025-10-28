@@ -439,6 +439,8 @@ function showDisconnectedState() {
   if (statusTextEl) {
     statusTextEl.textContent = "센서 미연결";
     statusTextEl.style.color = "#94a3b8";
+    // 좌측 세로 바를 회색으로 변경
+    statusTextEl.style.setProperty("--status-bar-color", "#64748b");
   }
 
   // sensorData 초기화 (더미 데이터 제거)
