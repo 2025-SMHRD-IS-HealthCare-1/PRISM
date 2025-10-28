@@ -133,10 +133,14 @@ function connectWebSocket() {
           const data = message.data;
 
           // device_id에서 zone 추출 (예: rpi-01 -> testbox로 매핑)
-          let zone = currentZone;
-          if (deviceId.includes("rpi")) {
+          let zone = "testbox"; // 기본값을 testbox로 설정
+          if (deviceId && deviceId.includes("rpi")) {
             zone = "testbox"; // 라즈베리 파이는 testbox에 매핑
+          } else if (deviceId && deviceId.includes("opi")) {
+            zone = "warehouse"; // 오렌지 파이는 warehouse에 매핑 (예시)
           }
+
+          console.log(`📊 [${deviceId}] → zone: ${zone}, data:`, data);
 
           // 센서 데이터 업데이트
           updateSensorDataFromWebSocket(zone, data, message);
@@ -1292,8 +1296,11 @@ function updateSensorConnectionStatus(zone, connected) {
 
   const wasConnected = sensorConnectionStatus[zone].connected;
 
-  // 타임스탬프 항상 업데이트 (데이터 수신 시간 갱신)
-  sensorConnectionStatus[zone].lastUpdate = Date.now();
+  // 타임스탬프 업데이트: connected=true일 때만 갱신
+  // connected=false는 타임아웃에서 호출되므로 타임스탬프 갱신 불필요
+  if (connected) {
+    sensorConnectionStatus[zone].lastUpdate = Date.now();
+  }
 
   // 연결 상태 업데이트
   if (!wasConnected && connected) {
@@ -1301,7 +1308,7 @@ function updateSensorConnectionStatus(zone, connected) {
     sensorConnectionStatus[zone].connected = true;
     addEvent("normal", `${getZoneName(zone)} 센서 연결됨`);
     updateSensorCount();
-    
+
     // 현재 선택된 구역이면 UI 업데이트
     if (zone === currentZone) {
       updateConnectionStatus(true);
@@ -1314,7 +1321,7 @@ function updateSensorConnectionStatus(zone, connected) {
     // 연결 → 미연결 (연결 끊김)
     sensorConnectionStatus[zone].connected = false;
     updateSensorCount();
-    
+
     // 현재 선택된 구역이면 UI 업데이트
     if (zone === currentZone) {
       updateConnectionStatus(false);
@@ -1426,7 +1433,7 @@ function startSensorTimeoutCheck() {
           console.warn(
             `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
           );
-          
+
           // updateSensorConnectionStatus를 통해 일관성 있게 처리
           updateSensorConnectionStatus(zone, false);
           addEvent("warning", `${getZoneName(zone)} 센서 연결 끊김`);
