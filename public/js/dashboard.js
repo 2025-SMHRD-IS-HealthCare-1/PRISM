@@ -395,7 +395,7 @@ function updateConnectionStatus(connected) {
       danger: "위험",
       warning: "경고",
       caution: "주의",
-      normal: "정상",
+      normal: "연결됨", // "정상" → "연결됨"으로 변경
     };
     statusText.textContent = statusTexts[status];
     statusDot.className = `status-dot status-${status}`;

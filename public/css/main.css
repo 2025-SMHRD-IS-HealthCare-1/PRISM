@@ -10,7 +10,7 @@
     --color-danger: #ff6b6b;
     --color-warning: #ffd93d;
     --color-caution: #6bcfff;
-    --color-normal: #51cf66;
+    --color-normal: #6b9dff; /* 초록색 → 파란색 (센서 연결 상태 표시, 화재와 구분) */
     --color-inactive: #8b9dc3;
     
     /* Liquid Glass Background */
