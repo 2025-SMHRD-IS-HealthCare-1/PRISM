@@ -11,6 +11,8 @@ const CONFIG = {
   UPDATE_INTERVAL: 5000, // 5초마다 업데이트
   CHART_UPDATE_INTERVAL: 30000, // 30초마다 차트 업데이트
   EVENT_UPDATE_INTERVAL: 60000, // 1분마다 이벤트 업데이트
+  SENSOR_TIMEOUT: 30000, // 30초 동안 데이터 없으면 미연결로 간주
+  EVENT_DUPLICATE_TIMEOUT: 60000, // 1분 내 중복 이벤트 무시
 };
 
 // Global State
@@ -49,6 +51,15 @@ let sensorConnectionStatus = {
   machine: { connected: false, lastUpdate: null },
 };
 
+// 이벤트 중복 방지를 위한 최근 이벤트 추적 {eventKey: timestamp}
+let recentEvents = {};
+
+// 불꽃 감지 이벤트 고정 (최상단 표시)
+let fireAlertEvent = null;
+
+// 센서 타임아웃 체크 인터벌
+let sensorTimeoutCheckInterval = null;
+
 // Charts
 let historicalChart = null;
 let detailChart = null;
@@ -65,6 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadHistoricalData();
   scheduleDailyUpdate(); // 일간 데이터 갱신 스케줄
   startEventUpdates(); // 이벤트 업데이트 시작
+  startSensorTimeoutCheck(); // 센서 타임아웃 체크 시작
   showDisconnectedState(); // 초기 미연결 상태 표시
 });
 
@@ -250,6 +262,15 @@ function updateSensorDataFromWebSocket(zone, data, message) {
     status: status,
   };
 
+  // 🔥 불꽃이 꺼지면 고정된 불꽃 이벤트 제거
+  if (prevData.flame === true && data.flame === false) {
+    if (fireAlertEvent && fireAlertEvent.parentNode) {
+      fireAlertEvent.parentNode.removeChild(fireAlertEvent);
+      fireAlertEvent = null;
+      addEvent("normal", `✅ ${getZoneName(zone)} 불꽃 감지 해제`);
+    }
+  }
+
   // 임계값 체크 및 이벤트 생성
   checkThresholdAndCreateEvent(data, prevData);
 
@@ -434,35 +455,30 @@ function updateSensorData(data) {
 }
 
 function calculateStatus(data) {
-  // 임계값 기준으로 상태 계산 (라즈베리 파이 코드와 동일)
+  // 임계값 기준으로 상태 계산 (AND 형식 - 모든 조건 만족 시 상태 변경)
   const temp = parseFloat(data.temperature);
   const gas = parseFloat(data.gas);
   const pm25 = parseFloat(data.pm25 || data.dust);
-  const pm1 = parseFloat(data.pm1 || 0);
-  const pm10 = parseFloat(data.pm10 || 0);
-  const gas_delta = parseFloat(data.gas_delta || 0);
   const flame = data.flame;
 
-  // 위험 (danger) - 즉시 대응 필요
-  if (
-    flame ||
-    temp > 35 ||
-    gas > 200 ||
-    pm1 > 50 ||
-    pm25 > 35 ||
-    pm10 > 100 ||
-    gas_delta > 50
-  ) {
+  // 불꽃 감지 시 무조건 위험
+  if (flame) {
     return "danger";
   }
-  // 경고 (warning) - 주의 필요
-  else if (temp > 30 || gas > 150 || pm25 > 25 || pm10 > 75 || gas_delta > 30) {
+
+  // 위험 (danger) - 모든 센서가 위험 임계값 초과
+  if (temp > 40 && gas > 250 && pm25 > 50) {
+    return "danger";
+  }
+  // 경고 (warning) - 모든 센서가 경고 임계값 초과
+  else if (temp > 35 && gas > 200 && pm25 > 35) {
     return "warning";
   }
-  // 주의 (caution) - 모니터링 필요
-  else if (temp > 25 || gas > 100 || pm25 > 15 || pm10 > 50) {
+  // 주의 (caution) - 모든 센서가 주의 임계값 초과
+  else if (temp > 30 && gas > 150 && pm25 > 25) {
     return "caution";
   }
+  
   return "normal";
 }
 
@@ -552,7 +568,7 @@ function updateZoneStatus(zone) {
     return;
   }
 
-  const status = sensorData[zone].status;
+  const status = sensorData[zone]?.status || "normal";
   const statusClass = `status-${status}`;
 
   // 구역 박스 상태 업데이트
@@ -560,6 +576,25 @@ function updateZoneStatus(zone) {
   if (zoneBox) {
     const statusIndicator = zoneBox.querySelector(".zone-status");
     statusIndicator.className = `zone-status ${statusClass}`;
+    
+    // 🔥 위험 상태일 때 박스 전체를 빨간색으로 표시
+    if (status === "danger") {
+      zoneBox.style.borderColor = "var(--color-danger)";
+      zoneBox.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
+      zoneBox.style.boxShadow = "0 0 20px rgba(239, 68, 68, 0.3)";
+    } else if (status === "warning") {
+      zoneBox.style.borderColor = "var(--color-warning)";
+      zoneBox.style.backgroundColor = "rgba(245, 158, 11, 0.05)";
+      zoneBox.style.boxShadow = "0 0 15px rgba(245, 158, 11, 0.2)";
+    } else if (status === "caution") {
+      zoneBox.style.borderColor = "var(--color-caution)";
+      zoneBox.style.backgroundColor = "rgba(59, 130, 246, 0.05)";
+      zoneBox.style.boxShadow = "";
+    } else {
+      zoneBox.style.borderColor = "";
+      zoneBox.style.backgroundColor = "";
+      zoneBox.style.boxShadow = "";
+    }
   }
 }
 
@@ -1055,12 +1090,26 @@ function addEvent(level, message) {
     level = "normal";
   }
 
+  // 🔥 중복 이벤트 방지 (1분 내 동일 메시지 무시)
+  const eventKey = `${level}:${message}`;
+  const now = Date.now();
+  
+  if (recentEvents[eventKey]) {
+    const timeSinceLastEvent = now - recentEvents[eventKey];
+    if (timeSinceLastEvent < CONFIG.EVENT_DUPLICATE_TIMEOUT) {
+      // 1분 내 중복 이벤트는 무시
+      return;
+    }
+  }
+  
+  // 이벤트 타임스탬프 기록
+  recentEvents[eventKey] = now;
+
   const eventsList = document.getElementById("events-list");
-  const now = new Date();
-  const timeString = `${now.getHours().toString().padStart(2, "0")}:${now
-    .getMinutes()
-    .toString()
-    .padStart(2, "0")}`;
+  const timeString = new Date(now).toLocaleTimeString("ko-KR", { 
+    hour: "2-digit", 
+    minute: "2-digit" 
+  });
 
   const eventItem = document.createElement("div");
   eventItem.className = `event-item event-${level}`;
@@ -1079,11 +1128,41 @@ function addEvent(level, message) {
         <span class="event-text">${icon} ${message}</span>
     `;
 
-  eventsList.insertBefore(eventItem, eventsList.firstChild);
+  // 🔥 불꽃 감지 이벤트는 최상단에 고정
+  const isFireAlert = message.includes("불꽃") || message.includes("화재") || message.includes("🔥");
+  
+  if (isFireAlert && level === "danger") {
+    // 기존 불꽃 이벤트 제거
+    if (fireAlertEvent && fireAlertEvent.parentNode) {
+      fireAlertEvent.parentNode.removeChild(fireAlertEvent);
+    }
+    
+    // 새로운 불꽃 이벤트를 최상단에 삽입
+    eventsList.insertBefore(eventItem, eventsList.firstChild);
+    fireAlertEvent = eventItem;
+    
+    // 불꽃 이벤트에 특별 스타일 추가
+    eventItem.style.backgroundColor = "rgba(239, 68, 68, 0.1)";
+    eventItem.style.borderLeft = "3px solid var(--color-danger)";
+  } else {
+    // 일반 이벤트는 불꽃 이벤트 다음에 삽입
+    if (fireAlertEvent && fireAlertEvent.parentNode) {
+      // 불꽃 이벤트 바로 다음에 삽입
+      fireAlertEvent.parentNode.insertBefore(eventItem, fireAlertEvent.nextSibling);
+    } else {
+      // 불꽃 이벤트가 없으면 최상단에 삽입
+      eventsList.insertBefore(eventItem, eventsList.firstChild);
+    }
+  }
 
-  // 최대 10개 항목만 유지
-  while (eventsList.children.length > 10) {
-    eventsList.removeChild(eventsList.lastChild);
+  // 최대 10개 항목만 유지 (불꽃 이벤트는 카운트에서 제외)
+  const regularEvents = Array.from(eventsList.children).filter(el => el !== fireAlertEvent);
+  while (regularEvents.length > 10) {
+    const lastEvent = regularEvents[regularEvents.length - 1];
+    if (lastEvent !== fireAlertEvent) {
+      eventsList.removeChild(lastEvent);
+    }
+    regularEvents.pop();
   }
 
   // 일일 이벤트 카운트 증가
@@ -1192,7 +1271,7 @@ function updateSensorConnectionStatus(zone, connected) {
 
   const wasConnected = sensorConnectionStatus[zone].connected;
   sensorConnectionStatus[zone].connected = connected;
-  sensorConnectionStatus[zone].lastUpdate = new Date();
+  sensorConnectionStatus[zone].lastUpdate = Date.now(); // 현재 타임스탬프 (밀리초)
 
   // 연결 상태 변화 시 이벤트 생성
   if (!wasConnected && connected) {
@@ -1288,10 +1367,33 @@ function startEventUpdates() {
         ];
         const randomEvent =
           eventTypes[Math.floor(Math.random() * eventTypes.length)];
-        addEvent(randomEvent);
+        addEvent("normal", randomEvent);
       }
     }
   }, CONFIG.EVENT_UPDATE_INTERVAL); // 1분마다
+}
+
+// 센서 타임아웃 체크 (30초마다)
+function startSensorTimeoutCheck() {
+  sensorTimeoutCheckInterval = setInterval(() => {
+    const now = Date.now();
+
+    Object.entries(sensorConnectionStatus).forEach(([zone, status]) => {
+      if (status.connected && status.lastUpdate) {
+        const timeSinceUpdate = now - status.lastUpdate;
+
+        // 30초 이상 데이터 없으면 미연결로 처리
+        if (timeSinceUpdate > CONFIG.SENSOR_TIMEOUT) {
+          console.warn(
+            `⚠️ ${zone} 센서 타임아웃 (${Math.floor(timeSinceUpdate / 1000)}초)`
+          );
+          status.connected = false;
+          updateSensorCount();
+          updateZoneStatusToInactive(zone);
+        }
+      }
+    });
+  }, 10000); // 10초마다 체크
 }
 
 // Cleanup
