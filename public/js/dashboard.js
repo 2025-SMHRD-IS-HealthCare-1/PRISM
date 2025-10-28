@@ -110,16 +110,17 @@ function connectWebSocket() {
       console.log("✅ WebSocket 연결 성공");
       isConnected = true;
       // WebSocket 연결은 서버 통신 연결이지 센서 연결이 아님
-      // 센서 연결 상태는 데이터를 받을 때 updateSensorConnectionStatus에서 처리
-
-      // WebSocket 연결 이벤트
-      addEvent("normal", "서버 연결 완료");
+      // 센서 연결 상태는 데이터를 받을 때만 updateSensorConnectionStatus에서 처리
+      // ⚠️ 중요: WebSocket 연결 != 센서 연결 (센서는 데이터 수신 시점에만 연결로 간주)
 
       // 재연결 타이머 클리어
       if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
+
+      // ⚠️ WebSocket 연결 시 센서 미연결 메시지를 표시하지 않음
+      // (기존 센서 연결 상태 유지 - 데이터가 들어오면 자동으로 연결됨)
     };
 
     websocket.onmessage = (event) => {
@@ -223,13 +224,18 @@ function connectWebSocket() {
     websocket.onerror = (error) => {
       console.error("❌ WebSocket 오류:", error);
       isConnected = false;
-      addEvent("warning", "서버 연결 오류 발생");
+      
+      // ⚠️ 중요: WebSocket 오류 시 센서 연결 상태를 초기화하지 않음
+      // 센서 연결 상태는 타임아웃(60초)으로만 관리
     };
 
     websocket.onclose = () => {
       console.log("🔌 WebSocket 연결 종료");
       isConnected = false;
-      addEvent("warning", "서버 연결 종료");
+      
+      // ⚠️ 중요: WebSocket 연결 종료 시 센서 연결 상태를 초기화하지 않음
+      // 센서 연결 상태는 타임아웃(60초)으로만 관리
+      // WebSocket 재연결 후 데이터가 계속 들어오면 센서는 연결 상태 유지
 
       // 5초 후 재연결 시도
       if (!reconnectTimer) {
