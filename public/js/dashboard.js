@@ -307,14 +307,38 @@ function handleFireDetection(message) {
   // 🔥 화재 감지 시간 기록
   lastFireDetectionTime = new Date();
 
-  // 🚨 무조건 위험 상태로 전환
-  fireDetectionActive = true;
+  // 🚨 Fire 또는 Smoke 감지 시 무조건 위험 상태로 전환
+  const isFire =
+    label.toLowerCase().includes("fire") ||
+    label.toLowerCase().includes("smoke");
 
-  // 센서 데이터를 위험 상태로 강제 설정
-  sensorData[zone].status = "danger";
+  if (isFire) {
+    fireDetectionActive = true;
 
-  // 구역 상태 업데이트
-  updateZoneStatus(zone, "danger");
+    // ⚠️ 센서 데이터가 없으면 초기화 (구역이 비활성 상태여도 강제 활성화)
+    if (!sensorData[zone]) {
+      sensorData[zone] = {
+        temperature: 0,
+        gas: 0,
+        dust: 0,
+        pm25: 0,
+        pm1: 0,
+        pm10: 0,
+        gas_delta: 0,
+        flame: false,
+        status: "danger",
+      };
+    }
+
+    // 센서 데이터를 위험 상태로 강제 설정
+    sensorData[zone].status = "danger";
+
+    // 구역 상태 업데이트 (박스를 빨간색으로 표시)
+    updateZoneStatus(zone, "danger");
+
+    // 전체 시스템 상태 업데이트
+    updateOverallStatus();
+  }
 
   // 이벤트 추가 (최상단 고정)
   const eventMessage = `🔥 ${label} 감지! (신뢰도: ${confidence}%)`;
@@ -370,10 +394,15 @@ function handleVideoStream(message) {
 function updateCCTVFrame() {
   const cctvStream = document.getElementById("cctv-stream");
   const popup = document.getElementById("cctv-popup");
-  
-  if (cctvStream && popup && popup.classList.contains("show") && cctvStreamFrame) {
+
+  if (
+    cctvStream &&
+    popup &&
+    popup.classList.contains("show") &&
+    cctvStreamFrame
+  ) {
     cctvStream.src = cctvStreamFrame;
-    
+
     // 🔥 CCTV 시스템 상태 업데이트
     updateCCTVStatus();
   }
@@ -413,23 +442,18 @@ function updateCCTVStatus() {
   const recordingElement = document.getElementById("cctv-recording");
 
   if (connectionElement) {
-    // 스트림 수신 시간 체크 (10초 이내면 온라인)
-    const now = new Date();
-    const timeSinceLastStream = lastStreamReceivedTime
-      ? (now - lastStreamReceivedTime) / 1000
-      : Infinity;
-
-    if (timeSinceLastStream < 10) {
+    // 스트림 수신 여부로만 판단 (간단하게)
+    if (cctvStreamFrame && lastStreamReceivedTime) {
+      // 스트림 있음 = 온라인
       connectionElement.textContent = "온라인";
       connectionElement.className = "status-online";
+      connectionElement.style.color = "var(--color-normal)";
       cctvConnectionStatus = "온라인";
-    } else if (timeSinceLastStream < 30) {
-      connectionElement.textContent = "불안정";
-      connectionElement.className = "status-warning";
-      cctvConnectionStatus = "불안정";
     } else {
+      // 스트림 없음 = 오프라인 (빨간색)
       connectionElement.textContent = "오프라인";
       connectionElement.className = "status-offline";
+      connectionElement.style.color = "var(--color-danger)";
       cctvConnectionStatus = "오프라인";
     }
   }
@@ -463,10 +487,13 @@ function addFireDetectionLog(label, confidence) {
 
   fireDetectionLogs.unshift(log); // 최신 로그를 앞에 추가
 
-  // 최대 50개만 유지
-  if (fireDetectionLogs.length > 50) {
-    fireDetectionLogs = fireDetectionLogs.slice(0, 50);
+  // ⚠️ 최대 10개만 유지 (과거 기록부터 삭제)
+  if (fireDetectionLogs.length > 10) {
+    fireDetectionLogs = fireDetectionLogs.slice(0, 10);
   }
+
+  // 🔥 CCTV 팝업이 열려있으면 즉시 업데이트
+  updateCCTVActivity();
 }
 
 // 🔥 CCTV 최근 활동 업데이트
@@ -474,14 +501,14 @@ function updateCCTVActivity() {
   const activityList = document.getElementById("cctv-activity");
   if (!activityList) return;
 
-  // 최근 10개 로그만 표시
+  // ⚠️ 최대 10개 로그만 표시 (최신순)
   const recentLogs = fireDetectionLogs.slice(0, 10);
 
   if (recentLogs.length === 0) {
     activityList.innerHTML = `
       <div class="activity-item">
-        <div class="activity-time">--:--</div>
-        <div class="activity-text">활동 내역 없음</div>
+        <span class="activity-time">--:--</span>
+        <span class="activity-text">활동 내역 없음</span>
       </div>
     `;
     return;
@@ -492,14 +519,13 @@ function updateCCTVActivity() {
       const timeStr = log.time.toLocaleTimeString("ko-KR", {
         hour: "2-digit",
         minute: "2-digit",
+        second: "2-digit",
       });
 
       return `
       <div class="activity-item">
-        <div class="activity-time">${timeStr}</div>
-        <div class="activity-text" style="color: var(--color-danger);">
-          🔥 ${log.label} 감지 (${log.confidence}%)
-        </div>
+        <span class="activity-time">${timeStr}</span>
+        <span class="activity-text">🔥 ${log.label} 감지 (${log.confidence}%)</span>
       </div>
     `;
     })
@@ -1408,11 +1434,11 @@ function refreshCCTV() {
   if (!cctvStream) return;
 
   console.log("🔄 CCTV 새로고침");
-  
+
   // 줌 레벨 초기화
   cctvZoomLevel = 1.0;
   cctvStream.style.transform = `scale(${cctvZoomLevel})`;
-  
+
   // 최신 프레임으로 강제 업데이트
   if (cctvStreamFrame) {
     cctvStream.src = "";
@@ -1427,7 +1453,7 @@ function fullscreenCCTV() {
   if (!cctvStream) return;
 
   console.log("🖥️ CCTV 전체화면");
-  
+
   if (cctvStream.requestFullscreen) {
     cctvStream.requestFullscreen();
   } else if (cctvStream.webkitRequestFullscreen) {
@@ -1809,7 +1835,7 @@ window.addEventListener("beforeunload", () => {
 window.addEventListener("click", (e) => {
   if (e.target.classList.contains("popup")) {
     e.target.classList.remove("show");
-    
+
     // CCTV 팝업이 닫힐 때 스트림 인터벌 정리
     if (e.target.id === "cctv-popup" && cctvStreamInterval) {
       clearInterval(cctvStreamInterval);
@@ -1825,7 +1851,7 @@ window.addEventListener("keydown", (e) => {
     const openPopups = document.querySelectorAll(".popup.show");
     openPopups.forEach((popup) => {
       popup.classList.remove("show");
-      
+
       // CCTV 팝업이 닫힐 때 스트림 인터벌 정리
       if (popup.id === "cctv-popup" && cctvStreamInterval) {
         clearInterval(cctvStreamInterval);

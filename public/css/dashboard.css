@@ -780,6 +780,10 @@
 }
 
 .activity-item {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--spacing-sm);
   padding: var(--spacing-sm);
   margin-bottom: var(--spacing-sm);
   background-color: var(--bg-secondary);
@@ -791,12 +795,14 @@
   font-weight: bold;
   color: var(--text-primary);
   font-size: 0.85rem;
+  white-space: nowrap;
+  min-width: 60px;
 }
 
 .activity-text {
-  color: var(--text-secondary);
+  color: var(--color-danger);
   font-size: 0.85rem;
-  margin-top: var(--spacing-xs);
+  flex: 1;
 }
 
 /* Detail Popup */
