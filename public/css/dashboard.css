@@ -717,25 +717,41 @@
   background-color: var(--bg-primary);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
-  overflow: hidden;
-  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
 }
 
-.cctv-video img {
+/* 이미지 래퍼 - 확대 시 이 영역을 벗어나지 않음 */
+.cctv-stream-wrapper {
   width: 100%;
   aspect-ratio: 4/3;
+  overflow: hidden;
   border-radius: var(--radius-sm);
   background-color: #000;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 이미지 - 확대 시 wrapper 내에서만 확대됨 */
+.cctv-stream-wrapper img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   transition: transform 0.2s ease;
   transform-origin: center center;
+  display: block;
 }
 
 .cctv-controls {
   display: flex;
   gap: var(--spacing-sm);
-  margin-top: var(--spacing-md);
   justify-content: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .btn-cctv-control {
