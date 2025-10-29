@@ -39,7 +39,8 @@ import serial
 import requests
 
 # ───────────────────────── 서버 설정 ─────────────────────────
-API_SERVER = os.getenv("API_SERVER", "https://prism-api-ay8q.onrender.com")
+#API_SERVER = os.getenv("API_SERVER", "https://prism-api-ay8q.onrender.com")
+API_SERVER = os.getenv("API_SERVER", "https://prism-api-qnxu.onrender.com")
 DEVICE_ID = os.getenv("DEVICE_ID", "rpi-01")
 SEND_INTERVAL = 5.0  # 5초마다 서버로 전송
 MAX_RETRIES = 3      # 전송 실패 시 최대 재시도 횟수

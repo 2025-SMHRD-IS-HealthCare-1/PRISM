@@ -3,11 +3,14 @@ const CONFIG = {
   API_BASE_URL:
     window.location.hostname === "localhost"
       ? "http://localhost:8000" // FastAPI 백엔드 서버
-      : "https://prism-api-ay8q.onrender.com", // Render 배포 서버
+      : //: "https://prism-api-qnxu.onrender.com", // Render 배포 서버
+        "https://prism-api-qnxu.onrender.com",
+
   WS_BASE_URL:
     window.location.hostname === "localhost"
       ? "ws://localhost:8000" // WebSocket 로컬
-      : "wss://prism-api-ay8q.onrender.com", // WebSocket Render
+      : //: "wss://prism-api-qnxu.onrender.com", // WebSocket Render
+        "wss://prism-api-qnxu.onrender.com",
   UPDATE_INTERVAL: 5000, // 5초마다 업데이트
   CHART_UPDATE_INTERVAL: 30000, // 30초마다 차트 업데이트
   EVENT_UPDATE_INTERVAL: 60000, // 1분마다 이벤트 업데이트

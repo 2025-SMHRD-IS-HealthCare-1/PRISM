@@ -10,7 +10,8 @@ from datetime import datetime
 import os
 
 # 설정 (환경 변수 또는 기본값 사용)
-API_SERVER = os.getenv("API_SERVER", "https://prism-api-ay8q.onrender.com")
+#API_SERVER = os.getenv("API_SERVER", "https://prism-api-ay8q.onrender.com")
+API_SERVER = os.getenv("API_SERVER", "https://prism-api-qnxu.onrender.com")
 DEVICES = ["rpi-01", "opi-01", "test-device"]
 
 def send_random_data(device_id):
