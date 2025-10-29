@@ -690,6 +690,22 @@
   color: var(--color-warning);
 }
 
+/* 🔥 CCTV 연결 상태 스타일 */
+.status-online {
+  color: var(--color-normal);
+  font-weight: 600;
+}
+
+.status-offline {
+  color: var(--color-inactive);
+  font-weight: 600;
+}
+
+.status-warning {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
 /* CCTV Popup */
 .cctv-container {
   display: grid;

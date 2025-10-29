@@ -13,12 +13,15 @@ Render는 GitHub에 푸시하면 **자동으로 재배포**됩니다.
 ### Render 대시보드에서 확인
 
 1. **Render 대시보드 접속**
+
    - https://dashboard.render.com
 
 2. **PRISM API 서비스 선택**
+
    - 서비스 목록에서 `prism-api` 클릭
 
 3. **배포 상태 확인**
+
    - "Events" 탭에서 배포 진행 상황 확인
    - "Deploy in progress..." 메시지 확인
    - 완료되면 "Live" 상태로 변경
@@ -49,6 +52,7 @@ curl https://prism-api-ay8q.onrender.com/health
 ```
 
 **예상 출력:**
+
 ```json
 {
   "status": "healthy",
@@ -62,11 +66,13 @@ curl https://prism-api-ay8q.onrender.com/health
 ### 2. API 문서 확인
 
 브라우저에서 접속:
+
 ```
 https://prism-api-ay8q.onrender.com/docs
 ```
 
 새로운 엔드포인트 확인:
+
 - ✅ `POST /events/fire`
 - ✅ `POST /stream/video`
 - ✅ `GET /events/fire/latest`
@@ -95,6 +101,7 @@ API_SERVER = "https://prism-api-ay8q.onrender.com"
 ```
 
 전체 설정:
+
 ```python
 API_SERVER = "https://prism-api-ay8q.onrender.com"
 FIRE_EVENT_ENDPOINT = f"{API_SERVER}/events/fire"
@@ -112,21 +119,25 @@ HEADERS = {
 ## 🎯 전체 흐름 테스트
 
 ### 1단계: API 서버 확인
+
 ```bash
 curl https://prism-api-ay8q.onrender.com/health
 ```
 
 ### 2단계: 오렌지파이 실행
+
 ```bash
 # 오렌지파이에서
 python3 fire_gui1.py
 ```
 
 ### 3단계: 화재 감지 테스트
+
 - 화재/연기 이미지를 카메라에 보여주기
 - 오렌지파이 콘솔에서 "✅ 화재 이벤트 전송 성공" 확인
 
 ### 4단계: 웹 대시보드 확인
+
 - https://prism-jnhr0jkrd-pangs-projects-6d3df8bf.vercel.app
 - TEST BOX가 빨간색(위험)으로 변경 확인
 - 이벤트: "🔥 Fire 감지!" 표시 확인
@@ -139,6 +150,7 @@ python3 fire_gui1.py
 ### Render 배포가 시작되지 않을 때
 
 1. **GitHub 연동 확인**
+
    - Render 대시보드 → Settings → Build & Deploy
    - "Auto-Deploy" 활성화 확인
 
