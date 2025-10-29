@@ -3,13 +3,13 @@ const CONFIG = {
   API_BASE_URL:
     window.location.hostname === "localhost"
       ? "http://localhost:8000" // FastAPI 백엔드 서버
-      : //: "https://prism-api-qnxu.onrender.com", // Render 배포 서버
+      : //: "https://prism-api-ay8q.onrender.com", // Render 배포 서버
         "https://prism-api-qnxu.onrender.com",
 
   WS_BASE_URL:
     window.location.hostname === "localhost"
       ? "ws://localhost:8000" // WebSocket 로컬
-      : //: "wss://prism-api-qnxu.onrender.com", // WebSocket Render
+      : //: "wss://prism-api-ay8q.onrender.com", // WebSocket Render
         "wss://prism-api-qnxu.onrender.com",
   UPDATE_INTERVAL: 5000, // 5초마다 업데이트
   CHART_UPDATE_INTERVAL: 30000, // 30초마다 차트 업데이트
@@ -62,6 +62,7 @@ let fireAlertEvent = null;
 
 // 🔥 오렌지파이 CCTV 스트림 저장
 let cctvStreamFrame = null;
+let cctvStreamInterval = null; // 스트림 업데이트 인터벌
 
 // 🔥 오렌지파이 화재 감지 상태
 let fireDetectionActive = false;
@@ -73,6 +74,9 @@ let lastStreamReceivedTime = null;
 
 // 🔥 화재 감지 활동 로그
 let fireDetectionLogs = [];
+
+// 🔥 CCTV 줌 상태
+let cctvZoomLevel = 1.0; // 1.0 = 100%
 
 // 센서 타임아웃 체크 인터벌
 let sensorTimeoutCheckInterval = null;
@@ -357,17 +361,21 @@ function handleVideoStream(message) {
     lastStreamReceivedTime = new Date();
     cctvConnectionStatus = "온라인";
 
-    // CCTV 팝업이 열려있으면 실시간 업데이트
-    const cctvStream = document.getElementById("cctv-stream");
-    if (
-      cctvStream &&
-      cctvStream.parentElement.closest(".popup").classList.contains("active")
-    ) {
-      cctvStream.src = cctvStreamFrame;
+    // 🎥 CCTV 팝업이 열려있으면 실시간으로 프레임 업데이트
+    updateCCTVFrame();
+  }
+}
 
-      // 🔥 CCTV 시스템 상태 업데이트
-      updateCCTVStatus();
-    }
+// 🎥 CCTV 프레임 업데이트 (실시간 스트림 효과)
+function updateCCTVFrame() {
+  const cctvStream = document.getElementById("cctv-stream");
+  const popup = document.getElementById("cctv-popup");
+  
+  if (cctvStream && popup && popup.classList.contains("show") && cctvStreamFrame) {
+    cctvStream.src = cctvStreamFrame;
+    
+    // 🔥 CCTV 시스템 상태 업데이트
+    updateCCTVStatus();
   }
 }
 
@@ -1278,15 +1286,24 @@ function openCCTV(zone) {
   // 🔥 CCTV 시스템 상태 초기화 및 업데이트
   updateCCTVStatus();
 
-  // 🔥 1초마다 CCTV 상태 업데이트 (팝업이 열려있는 동안)
-  const cctvStatusInterval = setInterval(() => {
+  // 🔥 줌 레벨 초기화
+  cctvZoomLevel = 1.0;
+  cctvStream.style.transform = `scale(${cctvZoomLevel})`;
+
+  // 🔥 100ms마다 프레임 업데이트 체크 (실시간 스트림 효과)
+  if (cctvStreamInterval) {
+    clearInterval(cctvStreamInterval);
+  }
+  cctvStreamInterval = setInterval(() => {
     const popup = document.getElementById("cctv-popup");
-    if (popup && popup.classList.contains("active")) {
+    if (popup && popup.classList.contains("show")) {
+      updateCCTVFrame();
       updateCCTVStatus();
     } else {
-      clearInterval(cctvStatusInterval);
+      clearInterval(cctvStreamInterval);
+      cctvStreamInterval = null;
     }
-  }, 1000);
+  }, 100); // 100ms = 초당 10프레임
 
   showPopup("cctv-popup");
 }
@@ -1361,28 +1378,64 @@ function showError(message) {
 
 // CCTV Controls
 function zoomIn() {
-  console.log("Zoom In");
-  // CCTV 확대 기능 구현
+  const cctvStream = document.getElementById("cctv-stream");
+  if (!cctvStream) return;
+
+  // 최대 3배 확대
+  if (cctvZoomLevel < 3.0) {
+    cctvZoomLevel += 0.2;
+    cctvStream.style.transform = `scale(${cctvZoomLevel})`;
+    cctvStream.style.transformOrigin = "center center";
+    console.log(`🔍 Zoom In: ${(cctvZoomLevel * 100).toFixed(0)}%`);
+  }
 }
 
 function zoomOut() {
-  console.log("Zoom Out");
-  // CCTV 축소 기능 구현
+  const cctvStream = document.getElementById("cctv-stream");
+  if (!cctvStream) return;
+
+  // 최소 50% 축소
+  if (cctvZoomLevel > 0.5) {
+    cctvZoomLevel -= 0.2;
+    cctvStream.style.transform = `scale(${cctvZoomLevel})`;
+    cctvStream.style.transformOrigin = "center center";
+    console.log(`🔍 Zoom Out: ${(cctvZoomLevel * 100).toFixed(0)}%`);
+  }
 }
 
 function refreshCCTV() {
   const cctvStream = document.getElementById("cctv-stream");
-  const currentSrc = cctvStream.src;
-  cctvStream.src = "";
-  setTimeout(() => {
-    cctvStream.src = currentSrc;
-  }, 100);
+  if (!cctvStream) return;
+
+  console.log("🔄 CCTV 새로고침");
+  
+  // 줌 레벨 초기화
+  cctvZoomLevel = 1.0;
+  cctvStream.style.transform = `scale(${cctvZoomLevel})`;
+  
+  // 최신 프레임으로 강제 업데이트
+  if (cctvStreamFrame) {
+    cctvStream.src = "";
+    setTimeout(() => {
+      cctvStream.src = cctvStreamFrame;
+    }, 50);
+  }
 }
 
 function fullscreenCCTV() {
   const cctvStream = document.getElementById("cctv-stream");
+  if (!cctvStream) return;
+
+  console.log("🖥️ CCTV 전체화면");
+  
   if (cctvStream.requestFullscreen) {
     cctvStream.requestFullscreen();
+  } else if (cctvStream.webkitRequestFullscreen) {
+    cctvStream.webkitRequestFullscreen();
+  } else if (cctvStream.mozRequestFullScreen) {
+    cctvStream.mozRequestFullScreen();
+  } else if (cctvStream.msRequestFullscreen) {
+    cctvStream.msRequestFullscreen();
   }
 }
 
@@ -1756,5 +1809,28 @@ window.addEventListener("beforeunload", () => {
 window.addEventListener("click", (e) => {
   if (e.target.classList.contains("popup")) {
     e.target.classList.remove("show");
+    
+    // CCTV 팝업이 닫힐 때 스트림 인터벌 정리
+    if (e.target.id === "cctv-popup" && cctvStreamInterval) {
+      clearInterval(cctvStreamInterval);
+      cctvStreamInterval = null;
+    }
+  }
+});
+
+// ESC 키로 팝업 닫기
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.key === "Esc") {
+    // 열려있는 모든 팝업 닫기
+    const openPopups = document.querySelectorAll(".popup.show");
+    openPopups.forEach((popup) => {
+      popup.classList.remove("show");
+      
+      // CCTV 팝업이 닫힐 때 스트림 인터벌 정리
+      if (popup.id === "cctv-popup" && cctvStreamInterval) {
+        clearInterval(cctvStreamInterval);
+        cctvStreamInterval = null;
+      }
+    });
   }
 });
