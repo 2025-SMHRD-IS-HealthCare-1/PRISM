@@ -370,9 +370,11 @@ function handleFireDetection(message) {
   // 🔔 라즈베리파이 부저 울리기
   triggerBuzzer(zone, "fire_detected");
 
-  // UI 강제 업데이트
+  // UI 강제 업데이트 (해당 구역이 선택되어 있으면 센서 모니터링 섹션도 업데이트)
   if (currentZone === zone) {
     updateUI();
+    // 센서 모니터링 섹션의 상태 텍스트도 즉시 업데이트
+    updateStatusDisplay(sensorData[zone]);
   }
 }
 
@@ -387,14 +389,14 @@ function handleVideoStream(message) {
 
   if (frame) {
     const frameData = `data:image/jpeg;base64,${frame}`;
-    
+
     // 🔥 스트림 수신 시간 업데이트
     lastStreamReceivedTime = new Date();
     cctvConnectionStatus = "온라인";
 
     // 🎥 프레임 버퍼에 추가 (최대 5개 유지)
     addFrameToBuffer(frameData);
-    
+
     // 🎥 Canvas 렌더링 시작
     if (!isRendering && cctvCanvas) {
       startCanvasRendering();
@@ -405,7 +407,7 @@ function handleVideoStream(message) {
 // 🎥 프레임 버퍼에 추가
 function addFrameToBuffer(frameData) {
   frameBuffer.push(frameData);
-  
+
   // 최대 5개 프레임만 유지 (메모리 관리)
   if (frameBuffer.length > 5) {
     frameBuffer.shift();
@@ -415,7 +417,7 @@ function addFrameToBuffer(frameData) {
 // 🎥 Canvas 렌더링 시작
 function startCanvasRendering() {
   if (isRendering) return;
-  
+
   isRendering = true;
   renderNextFrame();
 }
@@ -426,38 +428,38 @@ function renderNextFrame() {
     isRendering = false;
     return;
   }
-  
+
   const popup = document.getElementById("cctv-popup");
   if (!popup || !popup.classList.contains("show")) {
     isRendering = false;
     return;
   }
-  
+
   // 버퍼에서 프레임 가져오기
   if (frameBuffer.length > 0) {
     const frameData = frameBuffer.shift(); // FIFO 방식
-    
+
     // 이미지 로드 및 Canvas에 그리기
     const img = new Image();
     img.onload = () => {
       // Canvas 클리어
       cctvCtx.clearRect(0, 0, cctvCanvas.width, cctvCanvas.height);
-      
+
       // 이미지를 Canvas 크기에 맞게 그리기
       cctvCtx.drawImage(img, 0, 0, cctvCanvas.width, cctvCanvas.height);
-      
+
       // 🔥 CCTV 시스템 상태 업데이트
       updateCCTVStatus();
-      
+
       // 다음 프레임 요청
       renderAnimationId = requestAnimationFrame(renderNextFrame);
     };
-    
+
     img.onerror = () => {
       console.error("프레임 로드 실패");
       renderAnimationId = requestAnimationFrame(renderNextFrame);
     };
-    
+
     img.src = frameData;
   } else {
     // 버퍼가 비었으면 계속 대기
@@ -1368,11 +1370,11 @@ function openCCTV(zone) {
   cctvCanvas = document.getElementById("cctv-stream");
   if (cctvCanvas) {
     cctvCtx = cctvCanvas.getContext("2d");
-    
+
     // Canvas 배경을 검은색으로 초기화
     cctvCtx.fillStyle = "#000";
     cctvCtx.fillRect(0, 0, cctvCanvas.width, cctvCanvas.height);
-    
+
     // 로딩 텍스트 표시
     cctvCtx.fillStyle = "#fff";
     cctvCtx.font = "20px Arial";
