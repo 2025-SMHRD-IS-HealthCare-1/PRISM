@@ -461,7 +461,7 @@ function updateCCTVStatus() {
   // 녹화 상태 업데이트 (화재 감지 중일 때만 녹화)
   if (recordingElement) {
     if (fireDetectionActive) {
-      recordingElement.textContent = "위험 녹화중";
+      recordingElement.textContent = "녹화중";
       recordingElement.style.color = "var(--color-danger)";
     } else if (cctvConnectionStatus === "온라인") {
       recordingElement.textContent = "녹화중";

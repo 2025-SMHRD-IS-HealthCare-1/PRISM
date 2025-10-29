@@ -717,6 +717,8 @@
   background-color: var(--bg-primary);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
+  overflow: hidden;
+  position: relative;
 }
 
 .cctv-video img {
@@ -724,7 +726,9 @@
   aspect-ratio: 4/3;
   border-radius: var(--radius-sm);
   background-color: #000;
-  object-fit: cover;
+  object-fit: contain;
+  transition: transform 0.2s ease;
+  transform-origin: center center;
 }
 
 .cctv-controls {
