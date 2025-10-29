@@ -350,60 +350,158 @@ async def ingest_data(data: IngestData):
         "data": {"temp": 24.8, "hum": 51.2, "gas": 15.5},
         "ts": 1730000000.0
     }
+    
+    오렌지파이 화재 감지:
+    {
+        "device_id": "orangepi_fire_detector_01",
+        "data": {
+            "type": "fire_detection",
+            "label": "Fire",
+            "score": 0.89,
+            "bbox": [120, 45, 320, 280],
+            "frame_size": [640, 480]
+        },
+        "ts": 1730000000.0
+    }
+    
+    오렌지파이 비디오 스트림:
+    {
+        "device_id": "orangepi_fire_detector_01",
+        "data": {
+            "type": "video_stream",
+            "frame": "base64_encoded_image...",
+            "width": 640,
+            "height": 480
+        },
+        "ts": 1730000000.0
+    }
     """
     device_id = data.device_id
     timestamp = data.ts if data.ts else datetime.now().timestamp()
     
-    # 임계값 체크
-    threshold_result = check_thresholds(device_id, data.data)
+    # 🔥 데이터 타입 확인
+    data_type = data.data.get("type", "sensor_data")
     
-    # 데이터 저장
-    stored_data = {
-        "device_id": device_id,
-        "data": data.data,
-        "timestamp": timestamp,
-        "datetime": datetime.fromtimestamp(timestamp).isoformat(),
-        "alert": threshold_result["alert"],
-        "level": threshold_result["level"],
-        "reasons": threshold_result["reasons"]
-    }
+    # 🔥 오렌지파이 화재 감지 처리
+    if data_type == "fire_detection":
+        print(f"🔥 [{device_id}] 화재 감지: {data.data.get('label')} (신뢰도: {data.data.get('score', 0):.2%})")
+        
+        # WebSocket으로 화재 감지 이벤트 전송
+        await manager.broadcast({
+            "type": "fire_detection",
+            "source": device_id,
+            "label": data.data.get("label"),
+            "score": data.data.get("score"),
+            "bbox": data.data.get("bbox"),
+            "frame_size": data.data.get("frame_size"),
+            "ts": datetime.fromtimestamp(timestamp).isoformat()
+        })
+        
+        # 화재 이벤트 저장
+        global LATEST_FIRE_EVENT, FIRE_EVENTS
+        event_data = {
+            "ts": datetime.fromtimestamp(timestamp).isoformat(),
+            "source": device_id,
+            "label": data.data.get("label"),
+            "score": data.data.get("score"),
+            "bbox": data.data.get("bbox"),
+            "frame_size": data.data.get("frame_size")
+        }
+        LATEST_FIRE_EVENT = event_data
+        FIRE_EVENTS.append(event_data)
+        if len(FIRE_EVENTS) > 100:
+            FIRE_EVENTS = FIRE_EVENTS[-100:]
+        
+        return {
+            "status": "success",
+            "device_id": device_id,
+            "type": "fire_detection",
+            "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+        }
     
-    # 최신 데이터 업데이트
-    LATEST[device_id] = stored_data
+    # 🔥 오렌지파이 비디오 스트림 처리
+    elif data_type == "video_stream":
+        print(f"📹 [{device_id}] 비디오 스트림 수신")
+        
+        # WebSocket으로 비디오 스트림 전송
+        await manager.broadcast({
+            "type": "video_stream",
+            "source": device_id,
+            "frame": data.data.get("frame"),
+            "width": data.data.get("width"),
+            "height": data.data.get("height"),
+            "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+        })
+        
+        # 비디오 스트림 저장
+        global LATEST_VIDEO_STREAM
+        LATEST_VIDEO_STREAM = {
+            "ts": datetime.fromtimestamp(timestamp).isoformat(),
+            "source": device_id,
+            "frame": data.data.get("frame"),
+            "width": data.data.get("width"),
+            "height": data.data.get("height")
+        }
+        
+        return {
+            "status": "success",
+            "device_id": device_id,
+            "type": "video_stream",
+            "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+        }
     
-    # 히스토리에 추가
-    if device_id not in HISTORY:
-        HISTORY[device_id] = []
-    
-    HISTORY[device_id].append(stored_data)
-    
-    # 최근 1000개 데이터만 유지 (메모리 관리)
-    if len(HISTORY[device_id]) > 1000:
-        HISTORY[device_id] = HISTORY[device_id][-1000:]
-    
-    # 로그 출력
-    if threshold_result["alert"]:
-        print(f"🚨 [{device_id}] 위험 감지! {' | '.join(threshold_result['reasons'])}")
-    print(f"📊 [{device_id}] 데이터 수신: {data.data}")
-    
-    # 🔥 WebSocket으로 모든 연결된 브라우저에게 실시간 전송
-    await manager.broadcast({
-        "type": "update",
-        "device_id": device_id,
-        "data": data.data,
-        "alert": threshold_result["alert"],
-        "level": threshold_result["level"],
-        "reasons": threshold_result["reasons"],
-        "timestamp": datetime.fromtimestamp(timestamp).isoformat()
-    })
-    
-    return {
-        "status": "success",
-        "device_id": device_id,
-        "alert": threshold_result["alert"],
-        "level": threshold_result["level"],
-        "timestamp": datetime.fromtimestamp(timestamp).isoformat()
-    }
+    # 🌡️ 일반 센서 데이터 처리 (라즈베리파이 등)
+    else:
+        # 임계값 체크
+        threshold_result = check_thresholds(device_id, data.data)
+        
+        # 데이터 저장
+        stored_data = {
+            "device_id": device_id,
+            "data": data.data,
+            "timestamp": timestamp,
+            "datetime": datetime.fromtimestamp(timestamp).isoformat(),
+            "alert": threshold_result["alert"],
+            "level": threshold_result["level"],
+            "reasons": threshold_result["reasons"]
+        }
+        
+        # 최신 데이터 업데이트
+        LATEST[device_id] = stored_data
+        
+        # 히스토리에 추가
+        if device_id not in HISTORY:
+            HISTORY[device_id] = []
+        
+        HISTORY[device_id].append(stored_data)
+        
+        # 최근 1000개 데이터만 유지 (메모리 관리)
+        if len(HISTORY[device_id]) > 1000:
+            HISTORY[device_id] = HISTORY[device_id][-1000:]
+        
+        # 로그 출력
+        if threshold_result["alert"]:
+            print(f"🚨 [{device_id}] 위험 감지! {' | '.join(threshold_result['reasons'])}")
+        print(f"📊 [{device_id}] 데이터 수신: {data.data}")
+        
+        # 🔥 WebSocket으로 모든 연결된 브라우저에게 실시간 전송
+        await manager.broadcast({
+            "type": "update",
+            "device_id": device_id,
+            "data": data.data,
+            "alert": threshold_result["alert"],
+            "level": threshold_result["level"],
+            "reasons": threshold_result["reasons"],
+            "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+        })
+        
+        return {
+            "status": "success",
+            "device_id": device_id,
+            "alert": threshold_result["alert"],
+            "level": threshold_result["level"],
+            "timestamp": datetime.fromtimestamp(timestamp).isoformat()
+        }
 
 # ============================================
 # 데이터 조회 엔드포인트
@@ -637,96 +735,6 @@ async def get_zones():
     return zones
 
 # ============================================
-# � 오렌지파이 화재 감지 API
-# ============================================
-
-@app.post("/events/fire")
-async def receive_fire_event(
-    event: FireEvent,
-    x_api_key: Optional[str] = Header(default=None)
-):
-    """
-    오렌지파이에서 화재/연기 감지 이벤트 수신
-    
-    fire_gui1.py에서 화재 또는 연기를 감지하면 이 엔드포인트로 전송
-    수신한 데이터를 WebSocket으로 브라우저에 실시간 전달
-    """
-    global LATEST_FIRE_EVENT, FIRE_EVENTS
-    
-    # API Key 검증 (선택적)
-    API_KEY = "supersecret_key_please_change_me"
-    if x_api_key and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    
-    # 이벤트 저장
-    event_data = event.dict()
-    LATEST_FIRE_EVENT = event_data
-    FIRE_EVENTS.append(event_data)
-    
-    # 최근 100개만 유지
-    if len(FIRE_EVENTS) > 100:
-        FIRE_EVENTS = FIRE_EVENTS[-100:]
-    
-    print(f"🔥 화재 감지 이벤트 수신: {event.label} (신뢰도: {event.score:.2%})")
-    
-    # WebSocket으로 브라우저에 실시간 전달
-    websocket_message = {
-        "type": "fire_detection",
-        "ts": event.ts,
-        "source": event.source,
-        "label": event.label,
-        "score": event.score,
-        "bbox": event.bbox,
-        "frame_size": event.frame_size
-    }
-    
-    await manager.broadcast(websocket_message)
-    
-    return {
-        "ok": True,
-        "received_at": datetime.now().isoformat()
-    }
-
-@app.post("/stream/video")
-async def receive_video_stream(
-    stream: VideoStream,
-    x_api_key: Optional[str] = Header(default=None)
-):
-    """
-    오렌지파이에서 비디오 스트림 수신
-    
-    Base64로 인코딩된 카메라 영상을 실시간으로 수신하여
-    WebSocket으로 브라우저에 전달
-    """
-    global LATEST_VIDEO_STREAM
-    
-    # API Key 검증 (선택적)
-    API_KEY = "supersecret_key_please_change_me"
-    if x_api_key and x_api_key != API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    
-    # 스트림 저장
-    stream_data = stream.dict()
-    LATEST_VIDEO_STREAM = stream_data
-    
-    print(f"📹 비디오 스트림 수신: {stream.source} ({stream.width}x{stream.height})")
-    
-    # WebSocket으로 브라우저에 실시간 전달
-    websocket_message = {
-        "type": "video_stream",
-        "source": stream.source,
-        "timestamp": stream.ts,
-        "frame": stream.frame,
-        "width": stream.width,
-        "height": stream.height
-    }
-    
-    await manager.broadcast(websocket_message)
-    
-    return {
-        "ok": True,
-        "received_at": datetime.now().isoformat()
-    }
 
 @app.get("/events/fire/latest")
 async def get_latest_fire_event():

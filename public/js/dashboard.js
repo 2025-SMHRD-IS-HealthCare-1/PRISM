@@ -65,7 +65,7 @@ let fireDetectionActive = false;
 let lastFireDetectionTime = null;
 
 // 🔥 CCTV 시스템 상태
-let cctvConnectionStatus = "대기중";  // "대기중", "온라인", "오프라인"
+let cctvConnectionStatus = "대기중"; // "대기중", "온라인", "오프라인"
 let lastStreamReceivedTime = null;
 
 // 🔥 화재 감지 활동 로그
@@ -296,7 +296,7 @@ function handleFireDetection(message) {
 
   // 신뢰도 백분율
   const confidence = (score * 100).toFixed(1);
-  
+
   // 🔥 화재 감지 시간 기록
   lastFireDetectionTime = new Date();
 
@@ -312,7 +312,7 @@ function handleFireDetection(message) {
   // 이벤트 추가 (최상단 고정)
   const eventMessage = `🔥 ${label} 감지! (신뢰도: ${confidence}%)`;
   addEvent("danger", eventMessage);
-  
+
   // 🔥 화재 감지 활동 로그 추가
   addFireDetectionLog(label, confidence);
 
@@ -349,7 +349,7 @@ function handleVideoStream(message) {
 
   if (frame) {
     cctvStreamFrame = `data:image/jpeg;base64,${frame}`;
-    
+
     // 🔥 스트림 수신 시간 업데이트
     lastStreamReceivedTime = new Date();
     cctvConnectionStatus = "온라인";
@@ -361,7 +361,7 @@ function handleVideoStream(message) {
       cctvStream.parentElement.closest(".popup").classList.contains("active")
     ) {
       cctvStream.src = cctvStreamFrame;
-      
+
       // 🔥 CCTV 시스템 상태 업데이트
       updateCCTVStatus();
     }
@@ -400,13 +400,14 @@ function updateCCTVStatus() {
   // 연결 상태 업데이트
   const connectionElement = document.getElementById("cctv-connection");
   const recordingElement = document.getElementById("cctv-recording");
-  
+
   if (connectionElement) {
     // 스트림 수신 시간 체크 (10초 이내면 온라인)
     const now = new Date();
-    const timeSinceLastStream = lastStreamReceivedTime ? 
-      (now - lastStreamReceivedTime) / 1000 : Infinity;
-    
+    const timeSinceLastStream = lastStreamReceivedTime
+      ? (now - lastStreamReceivedTime) / 1000
+      : Infinity;
+
     if (timeSinceLastStream < 10) {
       connectionElement.textContent = "온라인";
       connectionElement.className = "status-online";
@@ -421,11 +422,11 @@ function updateCCTVStatus() {
       cctvConnectionStatus = "오프라인";
     }
   }
-  
+
   // 녹화 상태 업데이트 (화재 감지 중일 때만 녹화)
   if (recordingElement) {
     if (fireDetectionActive) {
-      recordingElement.textContent = "🔴 위험 녹화중";
+      recordingElement.textContent = "위험 녹화중";
       recordingElement.style.color = "var(--color-danger)";
     } else if (cctvConnectionStatus === "온라인") {
       recordingElement.textContent = "녹화중";
@@ -435,7 +436,7 @@ function updateCCTVStatus() {
       recordingElement.style.color = "var(--color-inactive)";
     }
   }
-  
+
   // 최근 활동 업데이트
   updateCCTVActivity();
 }
@@ -446,11 +447,11 @@ function addFireDetectionLog(label, confidence) {
   const log = {
     time: timestamp,
     label: label,
-    confidence: confidence
+    confidence: confidence,
   };
-  
+
   fireDetectionLogs.unshift(log); // 최신 로그를 앞에 추가
-  
+
   // 최대 50개만 유지
   if (fireDetectionLogs.length > 50) {
     fireDetectionLogs = fireDetectionLogs.slice(0, 50);
@@ -461,10 +462,10 @@ function addFireDetectionLog(label, confidence) {
 function updateCCTVActivity() {
   const activityList = document.getElementById("cctv-activity");
   if (!activityList) return;
-  
+
   // 최근 10개 로그만 표시
   const recentLogs = fireDetectionLogs.slice(0, 10);
-  
+
   if (recentLogs.length === 0) {
     activityList.innerHTML = `
       <div class="activity-item">
@@ -474,14 +475,15 @@ function updateCCTVActivity() {
     `;
     return;
   }
-  
-  activityList.innerHTML = recentLogs.map(log => {
-    const timeStr = log.time.toLocaleTimeString('ko-KR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-    
-    return `
+
+  activityList.innerHTML = recentLogs
+    .map((log) => {
+      const timeStr = log.time.toLocaleTimeString("ko-KR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      return `
       <div class="activity-item">
         <div class="activity-time">${timeStr}</div>
         <div class="activity-text" style="color: var(--color-danger);">
@@ -489,7 +491,8 @@ function updateCCTVActivity() {
         </div>
       </div>
     `;
-  }).join('');
+    })
+    .join("");
 }
 
 function updateSensorDataFromWebSocket(zone, data, message) {
@@ -1268,10 +1271,10 @@ function openCCTV(zone) {
     cctvStream.src =
       'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="%23000"/><text x="50%" y="50%" fill="%23fff" text-anchor="middle" font-size="20">CCTV 연결 대기중...</text></svg>';
   };
-  
+
   // 🔥 CCTV 시스템 상태 초기화 및 업데이트
   updateCCTVStatus();
-  
+
   // 🔥 1초마다 CCTV 상태 업데이트 (팝업이 열려있는 동안)
   const cctvStatusInterval = setInterval(() => {
     const popup = document.getElementById("cctv-popup");

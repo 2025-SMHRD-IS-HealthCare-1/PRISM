@@ -15,13 +15,130 @@ VIDEO_STREAM_ENDPOINT = f"{API_SERVER}/stream/video"
 
 ### 수정 후:
 
+````python
+# 오렌지파이 설정 가이드
+
+## fire_gui1.py 수정 방법
+
+`fire_gui1.py` 파일에서 다음 부분을 찾아 수정하세요:
+
+### ✅ 수정 후 (올바른 방법):
 ```python
 # PRISM API 서버 주소로 변경
 API_SERVER = "https://prism-api-ay8q.onrender.com"
-FIRE_EVENT_ENDPOINT = f"{API_SERVER}/events/fire"
-VIDEO_STREAM_ENDPOINT = f"{API_SERVER}/stream/video"
-API_KEY = "supersecret_key_please_change_me"
+INGEST_ENDPOINT = f"{API_SERVER}/ingest"  # 통합 엔드포인트 사용
+API_KEY = "supersecret_key_please_change_me"  # 선택적
+````
+
+## 전체 코드 예시
+
+```python
+import requests
+import json
+import base64
+from datetime import datetime
+
+# ✅ PRISM API 서버 주소 (Render 배포)
+API_SERVER = "https://prism-api-ay8q.onrender.com"
+INGEST_ENDPOINT = f"{API_SERVER}/ingest"
+DEVICE_ID = "orangepi_fire_detector_01"
+
+# 헤더 설정 (API Key는 선택적)
+HEADERS = {
+    "Content-Type": "application/json"
+}
+
+def send_fire_event(label, score, bbox, frame_size):
+    """화재/연기 감지 이벤트 전송"""
+    data = {
+        "device_id": DEVICE_ID,
+        "data": {
+            "type": "fire_detection",  # 데이터 타입 지정
+            "label": label,  # "Fire" or "Smoke"
+            "score": float(score),
+            "bbox": bbox,  # [x1, y1, x2, y2]
+            "frame_size": frame_size  # [width, height]
+        },
+        "ts": datetime.now().timestamp()
+    }
+
+    try:
+        response = requests.post(
+            INGEST_ENDPOINT,
+            json=data,
+            headers=HEADERS,
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            print(f"✅ 화재 이벤트 전송 성공: {label} ({score:.2%})")
+            return True
+        else:
+            print(f"❌ 전송 실패: {response.status_code} - {response.text}")
+            return False
+
+    except Exception as e:
+        print(f"❌ 전송 오류: {e}")
+        return False
+
+
+def send_video_stream(frame):
+    """실시간 비디오 프레임 전송 (Base64 인코딩)"""
+    try:
+        # 프레임을 JPEG로 인코딩
+        import cv2
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        frame_base64 = base64.b64encode(buffer).decode('utf-8')
+
+        data = {
+            "device_id": DEVICE_ID,
+            "data": {
+                "type": "video_stream",  # 데이터 타입 지정
+                "frame": frame_base64,
+                "width": frame.shape[1],
+                "height": frame.shape[0]
+            },
+            "ts": datetime.now().timestamp()
+        }
+
+        response = requests.post(
+            INGEST_ENDPOINT,
+            json=data,
+            headers=HEADERS,
+            timeout=5
+        )
+
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"❌ 스트림 전송 실패: {response.status_code}")
+            return False
+
+    except Exception as e:
+        # 네트워크 오류는 조용히 처리
+        pass
+        return False
+
+
+# YOLOv5 추론 루프에서 사용 예시
+def process_detection(results, frame):
+    """
+    YOLOv5 결과 처리 및 전송
+    """
+    for *box, conf, cls in results.xyxy[0]:
+        if conf > 0.5:  # 신뢰도 50% 이상만
+            label = "Fire" if int(cls) == 0 else "Smoke"
+            bbox = [int(box[0]), int(box[1]), int(box[2]), int(box[3])]
+            frame_size = [frame.shape[1], frame.shape[0]]  # [width, height]
+
+            # 화재/연기 감지 이벤트 전송
+            send_fire_event(label, float(conf), bbox, frame_size)
+
+    # 비디오 스트림 전송 (10프레임마다 또는 감지 시)
+    send_video_stream(frame)
 ```
+
+````
 
 ## 전체 코드 예시
 
@@ -117,7 +234,7 @@ def process_detection(results, frame):
 
     # 비디오 스트림 전송 (2초마다 또는 감지 시)
     send_video_stream(frame, frame.shape[1], frame.shape[0])
-```
+````
 
 ## 테스트 방법
 
