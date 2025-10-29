@@ -64,6 +64,13 @@ let fireAlertEvent = null;
 let cctvStreamFrame = null;
 let cctvStreamInterval = null; // 스트림 업데이트 인터벌
 
+// 🎥 Canvas 렌더링 관련
+let cctvCanvas = null;
+let cctvCtx = null;
+let frameBuffer = []; // 프레임 버퍼 (최대 5개)
+let isRendering = false;
+let renderAnimationId = null;
+
 // 🔥 오렌지파이 화재 감지 상태
 let fireDetectionActive = false;
 let lastFireDetectionTime = null;
@@ -379,33 +386,99 @@ function handleVideoStream(message) {
   const height = message.height || 480;
 
   if (frame) {
-    cctvStreamFrame = `data:image/jpeg;base64,${frame}`;
-
+    const frameData = `data:image/jpeg;base64,${frame}`;
+    
     // 🔥 스트림 수신 시간 업데이트
     lastStreamReceivedTime = new Date();
     cctvConnectionStatus = "온라인";
 
-    // 🎥 CCTV 팝업이 열려있으면 실시간으로 프레임 업데이트
-    updateCCTVFrame();
+    // 🎥 프레임 버퍼에 추가 (최대 5개 유지)
+    addFrameToBuffer(frameData);
+    
+    // 🎥 Canvas 렌더링 시작
+    if (!isRendering && cctvCanvas) {
+      startCanvasRendering();
+    }
   }
 }
 
-// 🎥 CCTV 프레임 업데이트 (실시간 스트림 효과)
-function updateCCTVFrame() {
-  const cctvStream = document.getElementById("cctv-stream");
-  const popup = document.getElementById("cctv-popup");
-
-  if (
-    cctvStream &&
-    popup &&
-    popup.classList.contains("show") &&
-    cctvStreamFrame
-  ) {
-    cctvStream.src = cctvStreamFrame;
-
-    // 🔥 CCTV 시스템 상태 업데이트
-    updateCCTVStatus();
+// 🎥 프레임 버퍼에 추가
+function addFrameToBuffer(frameData) {
+  frameBuffer.push(frameData);
+  
+  // 최대 5개 프레임만 유지 (메모리 관리)
+  if (frameBuffer.length > 5) {
+    frameBuffer.shift();
   }
+}
+
+// 🎥 Canvas 렌더링 시작
+function startCanvasRendering() {
+  if (isRendering) return;
+  
+  isRendering = true;
+  renderNextFrame();
+}
+
+// 🎥 다음 프레임 렌더링 (requestAnimationFrame 사용)
+function renderNextFrame() {
+  if (!cctvCanvas || !cctvCtx) {
+    isRendering = false;
+    return;
+  }
+  
+  const popup = document.getElementById("cctv-popup");
+  if (!popup || !popup.classList.contains("show")) {
+    isRendering = false;
+    return;
+  }
+  
+  // 버퍼에서 프레임 가져오기
+  if (frameBuffer.length > 0) {
+    const frameData = frameBuffer.shift(); // FIFO 방식
+    
+    // 이미지 로드 및 Canvas에 그리기
+    const img = new Image();
+    img.onload = () => {
+      // Canvas 클리어
+      cctvCtx.clearRect(0, 0, cctvCanvas.width, cctvCanvas.height);
+      
+      // 이미지를 Canvas 크기에 맞게 그리기
+      cctvCtx.drawImage(img, 0, 0, cctvCanvas.width, cctvCanvas.height);
+      
+      // 🔥 CCTV 시스템 상태 업데이트
+      updateCCTVStatus();
+      
+      // 다음 프레임 요청
+      renderAnimationId = requestAnimationFrame(renderNextFrame);
+    };
+    
+    img.onerror = () => {
+      console.error("프레임 로드 실패");
+      renderAnimationId = requestAnimationFrame(renderNextFrame);
+    };
+    
+    img.src = frameData;
+  } else {
+    // 버퍼가 비었으면 계속 대기
+    renderAnimationId = requestAnimationFrame(renderNextFrame);
+  }
+}
+
+// 🎥 Canvas 렌더링 중지
+function stopCanvasRendering() {
+  isRendering = false;
+  if (renderAnimationId) {
+    cancelAnimationFrame(renderAnimationId);
+    renderAnimationId = null;
+  }
+  frameBuffer = [];
+}
+
+// 🎥 CCTV 프레임 업데이트 (Canvas 방식에서는 자동 처리)
+function updateCCTVFrame() {
+  // Canvas 방식에서는 handleVideoStream에서 자동 처리됨
+  updateCCTVStatus();
 }
 
 // 🔔 라즈베리파이 부저 트리거 (API 호출)
@@ -1291,45 +1364,40 @@ function openCCTV(zone) {
   ).textContent = `CCTV-${zone.toUpperCase()}-001`;
   document.getElementById("cctv-location").textContent = getZoneName(zone);
 
-  // 🔥 오렌지파이 CCTV 스트림 설정
-  const cctvStream = document.getElementById("cctv-stream");
-
-  // 캐시된 프레임이 있으면 즉시 표시
-  if (cctvStreamFrame) {
-    cctvStream.src = cctvStreamFrame;
-  } else {
-    // 로딩 중 이미지
-    cctvStream.src =
-      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="%23000"/><text x="50%" y="50%" fill="%23fff" text-anchor="middle" font-size="20">CCTV 스트림 대기중...</text></svg>';
+  // 🎥 Canvas 초기화
+  cctvCanvas = document.getElementById("cctv-stream");
+  if (cctvCanvas) {
+    cctvCtx = cctvCanvas.getContext("2d");
+    
+    // Canvas 배경을 검은색으로 초기화
+    cctvCtx.fillStyle = "#000";
+    cctvCtx.fillRect(0, 0, cctvCanvas.width, cctvCanvas.height);
+    
+    // 로딩 텍스트 표시
+    cctvCtx.fillStyle = "#fff";
+    cctvCtx.font = "20px Arial";
+    cctvCtx.textAlign = "center";
+    cctvCtx.textBaseline = "middle";
+    cctvCtx.fillText(
+      "CCTV 스트림 대기중...",
+      cctvCanvas.width / 2,
+      cctvCanvas.height / 2
+    );
   }
-
-  // 오류 처리
-  cctvStream.onerror = () => {
-    cctvStream.src =
-      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="%23000"/><text x="50%" y="50%" fill="%23fff" text-anchor="middle" font-size="20">CCTV 연결 대기중...</text></svg>';
-  };
 
   // 🔥 CCTV 시스템 상태 초기화 및 업데이트
   updateCCTVStatus();
 
   // 🔥 줌 레벨 초기화
   cctvZoomLevel = 1.0;
-  cctvStream.style.transform = `scale(${cctvZoomLevel})`;
-
-  // 🔥 100ms마다 프레임 업데이트 체크 (실시간 스트림 효과)
-  if (cctvStreamInterval) {
-    clearInterval(cctvStreamInterval);
+  if (cctvCanvas) {
+    cctvCanvas.style.transform = `scale(${cctvZoomLevel})`;
   }
-  cctvStreamInterval = setInterval(() => {
-    const popup = document.getElementById("cctv-popup");
-    if (popup && popup.classList.contains("show")) {
-      updateCCTVFrame();
-      updateCCTVStatus();
-    } else {
-      clearInterval(cctvStreamInterval);
-      cctvStreamInterval = null;
-    }
-  }, 100); // 100ms = 초당 10프레임
+
+  // 🎥 Canvas 렌더링 시작 (버퍼에 프레임이 있으면)
+  if (frameBuffer.length > 0 && !isRendering) {
+    startCanvasRendering();
+  }
 
   showPopup("cctv-popup");
 }
@@ -1836,10 +1904,13 @@ window.addEventListener("click", (e) => {
   if (e.target.classList.contains("popup")) {
     e.target.classList.remove("show");
 
-    // CCTV 팝업이 닫힐 때 스트림 인터벌 정리
-    if (e.target.id === "cctv-popup" && cctvStreamInterval) {
-      clearInterval(cctvStreamInterval);
-      cctvStreamInterval = null;
+    // 🎥 CCTV 팝업이 닫힐 때 Canvas 렌더링 중지
+    if (e.target.id === "cctv-popup") {
+      stopCanvasRendering();
+      if (cctvStreamInterval) {
+        clearInterval(cctvStreamInterval);
+        cctvStreamInterval = null;
+      }
     }
   }
 });
@@ -1852,10 +1923,13 @@ window.addEventListener("keydown", (e) => {
     openPopups.forEach((popup) => {
       popup.classList.remove("show");
 
-      // CCTV 팝업이 닫힐 때 스트림 인터벌 정리
-      if (popup.id === "cctv-popup" && cctvStreamInterval) {
-        clearInterval(cctvStreamInterval);
-        cctvStreamInterval = null;
+      // 🎥 CCTV 팝업이 닫힐 때 Canvas 렌더링 중지
+      if (popup.id === "cctv-popup") {
+        stopCanvasRendering();
+        if (cctvStreamInterval) {
+          clearInterval(cctvStreamInterval);
+          cctvStreamInterval = null;
+        }
       }
     });
   }
