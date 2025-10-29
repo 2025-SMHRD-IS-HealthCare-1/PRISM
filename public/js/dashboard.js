@@ -390,6 +390,9 @@ function handleVideoStream(message) {
   if (frame) {
     const frameData = `data:image/jpeg;base64,${frame}`;
 
+    // 🔥 스트림 프레임 저장 (연결 상태 확인용)
+    cctvStreamFrame = frameData;
+    
     // 🔥 스트림 수신 시간 업데이트
     lastStreamReceivedTime = new Date();
     cctvConnectionStatus = "온라인";
@@ -401,6 +404,9 @@ function handleVideoStream(message) {
     if (!isRendering && cctvCanvas) {
       startCanvasRendering();
     }
+    
+    // 🔥 CCTV 상태 업데이트 (연결 상태 즉시 반영)
+    updateCCTVStatus();
   }
 }
 
