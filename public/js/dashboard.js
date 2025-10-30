@@ -370,10 +370,11 @@ function handleFireDetection(message) {
   // 🔔 라즈베리파이 부저 울리기
   triggerBuzzer(zone, "fire_detected");
 
-  // UI 강제 업데이트 (해당 구역이 선택되어 있으면 센서 모니터링 섹션도 업데이트)
+  // 🔥 UI 강제 업데이트 (해당 구역이 선택되어 있으면 센서 모니터링 섹션도 업데이트)
   if (currentZone === zone) {
-    updateUI();
-    // 센서 모니터링 섹션의 상태 텍스트도 즉시 업데이트
+    // 센서 데이터를 화면에 표시
+    updateSensorDisplay(sensorData[zone]);
+    // 센서 모니터링 섹션의 상태 텍스트 업데이트
     updateStatusDisplay(sensorData[zone]);
   }
 }
@@ -392,7 +393,7 @@ function handleVideoStream(message) {
 
     // 🔥 스트림 프레임 저장 (연결 상태 확인용)
     cctvStreamFrame = frameData;
-    
+
     // 🔥 스트림 수신 시간 업데이트
     lastStreamReceivedTime = new Date();
     cctvConnectionStatus = "온라인";
@@ -404,7 +405,7 @@ function handleVideoStream(message) {
     if (!isRendering && cctvCanvas) {
       startCanvasRendering();
     }
-    
+
     // 🔥 CCTV 상태 업데이트 (연결 상태 즉시 반영)
     updateCCTVStatus();
   }
@@ -921,7 +922,14 @@ function updateSensorDisplay(data) {
 }
 
 function updateStatusDisplay(data) {
-  const status = calculateStatus(data);
+  // 🔥 현재 구역의 저장된 상태를 우선 사용 (화재 감지 시 강제 설정된 상태 반영)
+  let status;
+  if (sensorData[currentZone] && sensorData[currentZone].status) {
+    status = sensorData[currentZone].status;
+  } else {
+    status = calculateStatus(data);
+  }
+
   const statusColors = {
     danger: "#ef4444",
     warning: "#f59e0b",
@@ -1795,55 +1803,22 @@ function updateEventCount() {
 }
 
 function updateSystemStatus() {
-  // 센서 연결 상태 확인
+  // 🔄 시스템 상태 = 통신 상태 (정상/비정상만 표시)
   const systemStatusEl = document.getElementById("system-status");
 
   if (!isConnected) {
-    // 센서 미연결 시 빨간 글씨로 "비정상" 표시 (배경색 없음)
+    // 센서 미연결 시 "비정상" 표시
     systemStatusEl.textContent = "비정상";
     systemStatusEl.style.color = "#ef4444"; // 빨간색
-    systemStatusEl.style.backgroundColor = "transparent"; // 배경색 제거
+    systemStatusEl.style.backgroundColor = "transparent";
     systemStatusEl.className = "stat-value status-danger";
-    return;
-  }
-
-  // 활성화된 구역만 확인 (inactive 클래스가 없는 구역)
-  const activeZones = document.querySelectorAll(".zone-box:not(.inactive)");
-  const activeZoneNames = Array.from(activeZones).map(
-    (zone) => zone.dataset.zone
-  );
-
-  // 활성화된 구역의 센서 데이터만 체크
-  const activeSensorData = Object.entries(sensorData).filter(([zoneName, _]) =>
-    activeZoneNames.includes(zoneName)
-  );
-
-  const hasData = activeSensorData.length > 0;
-  const hasDanger = activeSensorData.some(
-    ([_, zone]) => zone.status === "danger"
-  );
-  const hasWarning = activeSensorData.some(
-    ([_, zone]) => zone.status === "warning"
-  );
-
-  let statusText = "정상";
-  let statusClass = "stat-value";
-
-  if (!hasData) {
-    statusText = "대기중";
-  } else if (hasDanger) {
-    statusText = "위험";
-    statusClass = "stat-value status-danger";
-  } else if (hasWarning) {
-    statusText = "경고";
-    statusClass = "stat-value status-warning";
   } else {
-    statusClass = "stat-value status-online";
+    // 센서 연결 시 "정상" 표시 (센서 상태와 무관)
+    systemStatusEl.textContent = "정상";
+    systemStatusEl.style.color = "#10b981"; // 초록색
+    systemStatusEl.style.backgroundColor = "transparent";
+    systemStatusEl.className = "stat-value status-online";
   }
-
-  systemStatusEl.textContent = statusText;
-  systemStatusEl.className = statusClass;
-  systemStatusEl.style.color = ""; // 기본 색상 사용
 }
 
 // 이벤트 업데이트 시작 (1분마다)
