@@ -1351,7 +1351,8 @@ function updateDetailChart() {
 
   // 최근 2시간 데이터 (30분 간격)
   const recentData = historicalData.slice(-4);
-  const labels = recentData.map((d, i) => `${i * 30}분 전`);
+  // 🔥 x축을 90분 전부터 시작하도록 순서 반전
+  const labels = recentData.map((d, i) => `${(recentData.length - 1 - i) * 30}분 전`).reverse();
 
   detailChart.data.labels = labels;
   detailChart.data.datasets[0].data = recentData.map((d) => d.temperature);
