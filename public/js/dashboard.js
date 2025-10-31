@@ -1793,9 +1793,8 @@ function updateSensorConnectionStatus(zone, connected) {
 }
 
 function updateCameraCount() {
-  // TODO: CCTV 연결 상태 추적 구현 필요
-  // 현재는 하드코딩
-  const activeCameras = 0;
+  // TEST BOX만 카메라 활성화 (1/4개 고정)
+  const activeCameras = 1;
   const totalCameras = 4;
   document.getElementById(
     "active-cameras"
