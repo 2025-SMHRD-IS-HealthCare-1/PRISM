@@ -27,7 +27,7 @@
   --border-color: rgba(139, 157, 195, 0.2);
 
   /* Glass Effect */
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-border: rgba(255, 255, 255, 0.052);
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   --glass-blur: blur(8px);
 
@@ -52,7 +52,7 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Inter",
     "Segoe UI", sans-serif;
-  background: linear-gradient(135deg, #0a0e1a 0%, #1a1f35 50%, #0d1323 100%);
+  background: linear-gradient(135deg, #0a0e1a 0%, #111623 50%, #0d1323 100%);
   color: var(--text-primary);
   line-height: 1.6;
   overflow: hidden;

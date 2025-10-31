@@ -21,7 +21,7 @@
 .map-background {
   flex: 1;
   /* 🏭 공장 도면 배경 이미지 */
-  background-image: url("../image/도면.png");
+  background-image: url("../image/도면_4.png");
   background-size: contain; /* 자동 맞춤 (비율 유지) */
   background-position: center center;
   background-repeat: no-repeat;
@@ -146,13 +146,13 @@
   position: absolute;
   bottom: 15px;
   right: 15px;
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border-radius: 0;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: none;
-  box-shadow: none;
+  background: rgba(111, 110, 110, 0.171);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 12px;
+  padding: var(--spacing-md) var(--spacing-lg);
+  border: 1px solid rgba(200, 200, 200, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   width: auto;
   max-width: 180px;
   font-size: 0.85rem;

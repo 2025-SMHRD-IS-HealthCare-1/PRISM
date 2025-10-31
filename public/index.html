@@ -88,49 +88,61 @@
               </div>
             </div>
 
-            <div class="zone-box zone-warehouse inactive" data-zone="warehouse">
+            <div class="zone-box zone-warehouse" data-zone="warehouse">
               <div class="zone-header">
                 <h3>원자재 창고</h3>
                 <span class="zone-status status-inactive"></span>
               </div>
               <div class="zone-controls">
-                <button class="btn-icon btn-cctv" disabled>
+                <button
+                  class="btn-icon btn-cctv"
+                  onclick="openCCTV('warehouse')"
+                >
                   <i class="fas fa-video"></i>
                 </button>
-                <button class="btn-icon btn-detail" disabled>
+                <button
+                  class="btn-icon btn-detail"
+                  onclick="openDetail('warehouse')"
+                >
                   <i class="fas fa-info-circle"></i>
                 </button>
               </div>
             </div>
 
-            <div
-              class="zone-box zone-inspection inactive"
-              data-zone="inspection"
-            >
+            <div class="zone-box zone-inspection" data-zone="inspection">
               <div class="zone-header">
                 <h3>제품 검사실</h3>
                 <span class="zone-status status-inactive"></span>
               </div>
               <div class="zone-controls">
-                <button class="btn-icon btn-cctv" disabled>
+                <button
+                  class="btn-icon btn-cctv"
+                  onclick="openCCTV('inspection')"
+                >
                   <i class="fas fa-video"></i>
                 </button>
-                <button class="btn-icon btn-detail" disabled>
+                <button
+                  class="btn-icon btn-detail"
+                  onclick="openDetail('inspection')"
+                >
                   <i class="fas fa-info-circle"></i>
                 </button>
               </div>
             </div>
 
-            <div class="zone-box zone-machine inactive" data-zone="machine">
+            <div class="zone-box zone-machine" data-zone="machine">
               <div class="zone-header">
                 <h3>기계/전기실</h3>
                 <span class="zone-status status-inactive"></span>
               </div>
               <div class="zone-controls">
-                <button class="btn-icon btn-cctv" disabled>
+                <button class="btn-icon btn-cctv" onclick="openCCTV('machine')">
                   <i class="fas fa-video"></i>
                 </button>
-                <button class="btn-icon btn-detail" disabled>
+                <button
+                  class="btn-icon btn-detail"
+                  onclick="openDetail('machine')"
+                >
                   <i class="fas fa-info-circle"></i>
                 </button>
               </div>
