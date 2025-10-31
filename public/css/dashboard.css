@@ -20,14 +20,11 @@
 /* 그리드 형태 배경 - 더 넓게 */
 .map-background {
   flex: 1;
-  background: linear-gradient(
-      90deg,
-      rgba(139, 157, 195, 0.03) 1px,
-      transparent 1px
-    ),
-    linear-gradient(rgba(139, 157, 195, 0.03) 1px, transparent 1px);
-  background-size: 80px 80px; /* 50px에서 80px로 증가 */
+  /* 🏭 공장 도면 배경 이미지 */
+  background-image: url("../image/도면.png");
+  background-size: contain; /* 자동 맞춤 (비율 유지) */
   background-position: center center;
+  background-repeat: no-repeat;
   border-radius: 0;
   padding: var(--spacing-xl);
   position: relative;

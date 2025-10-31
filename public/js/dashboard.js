@@ -1354,7 +1354,7 @@ function updateDetailChart() {
   // 🔥 x축: 90분 전(왼쪽) → 현재(오른쪽)
   const labels = recentData.map((d, i) => {
     const minutesAgo = (recentData.length - 1 - i) * 30;
-    return minutesAgo === 0 ? '현재' : `${minutesAgo}분 전`;
+    return minutesAgo === 0 ? "현재" : `${minutesAgo}분 전`;
   });
 
   detailChart.data.labels = labels;
