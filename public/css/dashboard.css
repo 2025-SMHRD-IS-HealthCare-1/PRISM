@@ -21,7 +21,7 @@
 .map-background {
   flex: 1;
   /* 🏭 공장 도면 배경 이미지 */
-  background-image: url("../image/도면_4.png");
+  background-image: url("../image/factory-blueprint.png");
   background-size: contain; /* 자동 맞춤 (비율 유지) */
   background-position: center center;
   background-repeat: no-repeat;
