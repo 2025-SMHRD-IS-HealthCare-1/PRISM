@@ -1,8 +1,11 @@
 // Configuration
 const CONFIG = {
-    API_BASE_URL: 'http://localhost:8000', // FastAPI 서버 주소
+    API_BASE_URL: window.location.hostname === 'localhost' 
+        ? 'http://localhost:3000'  // Express 백엔드 서버
+        : '',  // Vercel 배포시 상대 경로 사용 (같은 도메인)
     UPDATE_INTERVAL: 5000, // 5초마다 업데이트
     CHART_UPDATE_INTERVAL: 30000, // 30초마다 차트 업데이트
+    EVENT_UPDATE_INTERVAL: 60000, // 1분마다 이벤트 업데이트
 };
 
 // Global State
@@ -17,12 +20,15 @@ let sensorData = {
     }
 };
 let historicalData = [];
+let historicalDataCache = {}; // 과거 데이터 캐시 (날짜별로 저장)
 let updateInterval = null;
 let chartUpdateInterval = null;
+let eventUpdateInterval = null; // 이벤트 업데이트 인터벌
 let isConnected = false; // 센서 연결 상태
 let lastUpdateTime = null;
 let previousSensorData = {}; // 이전 센서 데이터 (임계값 체크용)
 let eventCount = 0;
+let lastDailyUpdate = null; // 마지막 일간 업데이트 시간
 
 // Charts
 let historicalChart = null;
@@ -38,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
     startDataUpdates();
     loadHistoricalData();
     scheduleDailyUpdate(); // 일간 데이터 갱신 스케줄
+    startEventUpdates(); // 이벤트 업데이트 시작
+    showDisconnectedState(); // 초기 미연결 상태 표시
 });
 
 // Clock
@@ -135,16 +143,30 @@ function updateConnectionStatus(connected) {
 }
 
 function showDisconnectedState() {
-    // 센서 값을 '미연결' 상태로 표시
-    document.getElementById('temp-value').textContent = '--°C';
-    document.getElementById('gas-value').textContent = '-- ppm';
-    document.getElementById('dust-value').textContent = '-- μg/m³';
-    document.getElementById('flame-value').textContent = '미감지';
+    // 센서 값을 '센서 미연결 상태..' 로 표시
+    const disconnectMessage = '센서 미연결 상태..';
+    document.getElementById('temp-value').textContent = disconnectMessage;
+    document.getElementById('gas-value').textContent = disconnectMessage;
+    document.getElementById('dust-value').textContent = disconnectMessage;
+    document.getElementById('flame-value').textContent = disconnectMessage;
     
-    document.getElementById('detail-temp-value').textContent = '--°C';
-    document.getElementById('detail-gas-value').textContent = '-- ppm';
-    document.getElementById('detail-dust-value').textContent = '-- μg/m³';
-    document.getElementById('detail-flame-value').textContent = '미감지';
+    document.getElementById('detail-temp-value').textContent = disconnectMessage;
+    document.getElementById('detail-gas-value').textContent = disconnectMessage;
+    document.getElementById('detail-dust-value').textContent = disconnectMessage;
+    document.getElementById('detail-flame-value').textContent = disconnectMessage;
+    
+    // 상태 텍스트도 업데이트
+    const statusTextEl = document.getElementById('status-text-display');
+    if (statusTextEl) {
+        statusTextEl.textContent = '센서 미연결';
+        statusTextEl.style.color = '#94a3b8';
+    }
+    
+    // sensorData 초기화 (더미 데이터 제거)
+    sensorData = {};
+    
+    // 구역 박스 상태도 미연결로 업데이트
+    updateZoneStatusToInactive(currentZone);
 }
 
 function updateSensorData(data) {
@@ -253,7 +275,11 @@ function updateStatusDisplay(data) {
 }
 
 function updateZoneStatus(zone) {
-    if (!isConnected) return;
+    if (!isConnected) {
+        // 연결 안 됨 - 비활성 상태로 표시
+        updateZoneStatusToInactive(zone);
+        return;
+    }
     
     const status = sensorData[zone].status;
     const statusClass = `status-${status}`;
@@ -263,6 +289,15 @@ function updateZoneStatus(zone) {
     if (zoneBox) {
         const statusIndicator = zoneBox.querySelector('.zone-status');
         statusIndicator.className = `zone-status ${statusClass}`;
+    }
+}
+
+// 구역 상태를 비활성(회색)으로 업데이트
+function updateZoneStatusToInactive(zone) {
+    const zoneBox = document.querySelector(`.zone-${zone}`);
+    if (zoneBox) {
+        const statusIndicator = zoneBox.querySelector('.zone-status');
+        statusIndicator.className = 'zone-status status-inactive';
     }
 }
 
@@ -307,14 +342,21 @@ function scheduleDailyUpdate() {
     
     console.log(`다음 일간 데이터 갱신: ${next7AM.toLocaleString('ko-KR')}`);
     
+    // Last Update 시간을 07:00 AM으로 설정
+    updateLastUpdateTime();
+    
     // 첫 실행 예약
     setTimeout(() => {
         loadHistoricalData();
+        updateLastUpdateTime();
+        lastDailyUpdate = new Date();
         console.log('일간 데이터 갱신 완료 (오전 7:00)');
         
         // 이후 24시간마다 반복
         setInterval(() => {
             loadHistoricalData();
+            updateLastUpdateTime();
+            lastDailyUpdate = new Date();
             console.log('일간 데이터 갱신 완료 (오전 7:00)');
         }, 24 * 60 * 60 * 1000); // 24시간
     }, timeUntilNext7AM);
@@ -323,6 +365,16 @@ function scheduleDailyUpdate() {
 // Historical Data
 async function loadHistoricalData() {
     try {
+        const today = new Date().toDateString();
+        
+        // 캐시된 데이터가 있고 오늘 날짜이면 사용
+        if (historicalDataCache[today]) {
+            console.log('캐시된 과거 데이터 사용');
+            historicalData = historicalDataCache[today];
+            updateHistoricalChart();
+            return;
+        }
+        
         // 주간 데이터 요청 (7일)
         const response = await fetch(`${CONFIG.API_BASE_URL}/api/history/${currentZone}?days=7`);
         
@@ -331,35 +383,65 @@ async function loadHistoricalData() {
         }
         
         const data = await response.json();
+        
+        // 빈 배열이면 고정된 가짜 데이터 생성 (현재 날짜 제외한 6일)
+        if (data.length === 0) {
+            console.log('센서 데이터 없음 - 고정된 과거 데이터 생성');
+            historicalData = generateFixedHistoricalData();
+            // 가짜 데이터는 캐시에 저장
+            historicalDataCache[today] = historicalData;
+            updateHistoricalChart();
+            return;
+        }
+        
+        // 과거 데이터를 캐시에 저장 (날짜별로)
+        historicalDataCache[today] = data;
         historicalData = data;
+        
         updateHistoricalChart();
     } catch (error) {
         console.error('과거 데이터 가져오기 실패:', error);
-        // 테스트용 더미 데이터
-        generateMockHistoricalData();
+        // 캐시가 있으면 사용
+        if (historicalDataCache[today]) {
+            historicalData = historicalDataCache[today];
+            updateHistoricalChart();
+        } else {
+            // 캐시도 없으면 고정된 가짜 데이터 생성
+            historicalData = generateFixedHistoricalData();
+            updateHistoricalChart();
+        }
     }
 }
 
-function generateMockHistoricalData() {
-    const data = [];
+// 고정된 과거 데이터 생성 (현재 날짜 제외한 6일)
+function generateFixedHistoricalData() {
+    const fixedData = [];
     const now = new Date();
     
-    // 주간 데이터 생성 (7일 전부터 현재까지, 일별)
-    for (let i = 6; i >= 0; i--) {
+    // 고정된 데이터 값 (6일치)
+    const fixedValues = [
+        { temperature: 23.5, gas: 28.3, dust: 12.8 },
+        { temperature: 24.1, gas: 31.2, dust: 14.5 },
+        { temperature: 22.8, gas: 26.7, dust: 11.9 },
+        { temperature: 25.3, gas: 33.8, dust: 15.2 },
+        { temperature: 23.9, gas: 29.5, dust: 13.6 },
+        { temperature: 24.7, gas: 32.1, dust: 14.8 }
+    ];
+    
+    // 6일 전부터 어제까지의 데이터 (현재 날짜는 제외)
+    for (let i = 6; i >= 1; i--) {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
-        date.setHours(12, 0, 0, 0); // 정오로 설정
+        date.setHours(7, 0, 0, 0); // 07:00 AM으로 설정
         
-        data.push({
+        const valueIndex = 6 - i; // 0~5 인덱스
+        fixedData.push({
             timestamp: date.toISOString(),
-            temperature: 20 + Math.random() * 15,
-            gas: 10 + Math.random() * 40,
-            dust: 5 + Math.random() * 15
+            ...fixedValues[valueIndex]
         });
     }
     
-    historicalData = data;
-    updateHistoricalChart();
+    return fixedData;
 }
 
 // Charts
@@ -418,7 +500,15 @@ function initializeCharts() {
                     grid: { color: '#475569' }
                 },
                 y: {
-                    ticks: { color: '#cbd5e1' },
+                    beginAtZero: true,
+                    min: 0,
+                    ticks: { 
+                        color: '#cbd5e1',
+                        callback: function(value) {
+                            // 음수는 표시하지 않음
+                            return value >= 0 ? value : '';
+                        }
+                    },
                     grid: { color: '#475569' }
                 }
             }
@@ -485,7 +575,18 @@ function initializeCharts() {
 }
 
 function updateHistoricalChart() {
-    if (!historicalChart || historicalData.length === 0) return;
+    if (!historicalChart) return;
+    
+    // 데이터가 없으면 빈 차트 표시
+    if (historicalData.length === 0) {
+        historicalChart.data.labels = ['데이터 없음'];
+        historicalChart.data.datasets[0].data = [0];
+        historicalChart.data.datasets[1].data = [0];
+        historicalChart.data.datasets[2].data = [0];
+        historicalChart.data.datasets[3].data = [0];
+        historicalChart.update('none');
+        return;
+    }
     
     // 주간 데이터 레이블 (일별)
     const labels = historicalData.map(d => {
@@ -518,11 +619,10 @@ function updateHistoricalChart() {
 }
 
 function updateLastUpdateTime() {
-    const now = new Date();
-    const timeString = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+    // 항상 07:00 AM으로 표시
     const lastUpdateElement = document.getElementById('last-update');
     if (lastUpdateElement) {
-        lastUpdateElement.textContent = `Last Update: ${timeString}`;
+        lastUpdateElement.textContent = 'Last Update: 07:00 AM';
     }
 }
 
@@ -622,7 +722,7 @@ function closePopup(popupId) {
 }
 
 function showError(message) {
-    document.getElementById('error-text').innerHTML = '<i class="fas fa-exclamation-triangle"></i><p>' + message + '</p>';
+    document.getElementById('error-text').innerHTML = '<p>' + message + '</p>';
     showPopup('error-popup');
 }
 
@@ -786,27 +886,71 @@ function updateEventCount() {
 }
 
 function updateSystemStatus() {
-    // 전체 시스템 상태 계산
+    // 센서 연결 상태 확인
+    const systemStatusEl = document.getElementById('system-status');
+    
+    if (!isConnected) {
+        // 센서 미연결 시 빨간 글씨로 "비정상" 표시 (배경색 없음)
+        systemStatusEl.textContent = '비정상';
+        systemStatusEl.style.color = '#ef4444'; // 빨간색
+        systemStatusEl.style.backgroundColor = 'transparent'; // 배경색 제거
+        systemStatusEl.className = 'stat-value status-danger';
+        return;
+    }
+    
+    // 연결된 경우 전체 시스템 상태 계산
     const hasData = Object.keys(sensorData).length > 0;
     const hasDanger = Object.values(sensorData).some(zone => zone.status === 'danger');
     const hasWarning = Object.values(sensorData).some(zone => zone.status === 'warning');
     
     let statusText = '정상';
+    let statusClass = 'stat-value';
+    
     if (!hasData) {
         statusText = '대기중';
     } else if (hasDanger) {
         statusText = '위험';
+        statusClass = 'stat-value status-danger';
     } else if (hasWarning) {
         statusText = '경고';
+        statusClass = 'stat-value status-warning';
+    } else {
+        statusClass = 'stat-value status-online';
     }
     
-    document.getElementById('system-status').textContent = statusText;
+    systemStatusEl.textContent = statusText;
+    systemStatusEl.className = statusClass;
+    systemStatusEl.style.color = ''; // 기본 색상 사용
+}
+
+// 이벤트 업데이트 시작 (1분마다)
+function startEventUpdates() {
+    // 1분마다 새로운 이벤트 추가
+    eventUpdateInterval = setInterval(() => {
+        // 센서가 연결되어 있고 데이터가 있을 때만 이벤트 생성
+        if (isConnected && sensorData[currentZone]) {
+            const zone = getZoneName(currentZone);
+            const data = sensorData[currentZone];
+            
+            // 무작위로 이벤트 생성 (10% 확률)
+            if (Math.random() < 0.1) {
+                const eventTypes = [
+                    `${zone} 센서 상태 점검 완료`,
+                    `${zone} 데이터 동기화 완료`,
+                    `${zone} 시스템 정상 작동 중`
+                ];
+                const randomEvent = eventTypes[Math.floor(Math.random() * eventTypes.length)];
+                addEvent(randomEvent);
+            }
+        }
+    }, CONFIG.EVENT_UPDATE_INTERVAL); // 1분마다
 }
 
 // Cleanup
 window.addEventListener('beforeunload', () => {
     if (updateInterval) clearInterval(updateInterval);
     if (chartUpdateInterval) clearInterval(chartUpdateInterval);
+    if (eventUpdateInterval) clearInterval(eventUpdateInterval);
 });
 
 // 팝업 외부 클릭시 닫기

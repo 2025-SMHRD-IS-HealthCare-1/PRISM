@@ -1,8 +1,35 @@
+# Node.js
 node_modules/
+npm-debug.log*
+package-lock.json
+
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
-.env
-.DS_Store
-*.log
+.venv/
 venv/
 env/
+
+# Environment Variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build
+.vercel/
+
+# Temporary files
+*.zip
+*.tmp
+.vercel

@@ -1,13 +1,13 @@
-/* Map Section - Liquid Glass */
+/* Map Section - 라운드 박스 제거 */
 .map-section {
     flex: 1 1 60%;
-    background: var(--bg-secondary);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border-radius: var(--radius-lg);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
     padding: var(--spacing-lg);
-    box-shadow: var(--glass-shadow);
-    border: 1px solid var(--glass-border);
+    box-shadow: none;
+    border: none;
 }
 
 .map-container {
@@ -17,20 +17,20 @@
     overflow: hidden;
 }
 
-/* 그리드 형태 배경 */
+/* 그리드 형태 배경 - 더 넓게 */
 .map-background {
     flex: 1;
     background: 
         linear-gradient(90deg, rgba(139, 157, 195, 0.03) 1px, transparent 1px),
         linear-gradient(rgba(139, 157, 195, 0.03) 1px, transparent 1px);
-    background-size: 50px 50px;
+    background-size: 80px 80px; /* 50px에서 80px로 증가 */
     background-position: center center;
-    border-radius: var(--radius-lg);
+    border-radius: 0;
     padding: var(--spacing-xl);
     position: relative;
     min-height: 0;
     height: 100%;
-    border: 1px solid rgba(139, 157, 195, 0.1);
+    border: none;
 }
 
 .map-title {
@@ -42,7 +42,7 @@
     text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
-/* Zone Boxes - Liquid Glass */
+/* Zone Boxes - 4개의 라운딩 박스 유지 */
 .zone-box {
     position: absolute;
     background: var(--bg-glass);
@@ -110,23 +110,49 @@
     box-shadow: 0 0 8px currentColor;
 }
 
+/* 구역 상태 색상 */
+.zone-status.status-normal {
+    background-color: var(--color-normal);
+    color: var(--color-normal);
+}
+
+.zone-status.status-caution {
+    background-color: var(--color-caution);
+    color: var(--color-caution);
+}
+
+.zone-status.status-warning {
+    background-color: var(--color-warning);
+    color: var(--color-warning);
+}
+
+.zone-status.status-danger {
+    background-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.zone-status.status-inactive {
+    background-color: #64748b;
+    color: #64748b;
+}
+
 .zone-controls {
     display: flex;
     gap: var(--spacing-sm);
 }
 
-/* Legend - 배치도 내부 하단 오른쪽 - Liquid Glass */
+/* Legend - 배치도 내부 하단 오른쪽 - 라운드 박스 제거 */
 .legend-inline {
     position: absolute;
     bottom: 15px;
     right: 15px;
-    background: var(--bg-glass);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border-radius: var(--radius-md);
+    background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-radius: 0;
     padding: var(--spacing-sm) var(--spacing-md);
-    border: 1px solid var(--glass-border);
-    box-shadow: var(--shadow-sm);
+    border: none;
+    box-shadow: none;
     width: auto;
     max-width: 180px;
     font-size: 0.85rem;
@@ -323,6 +349,32 @@
     height: 12px;
     border-radius: 50%;
     box-shadow: 0 0 8px currentColor;
+}
+
+/* 상태 점 색상 (센서 패널용) */
+.status-dot.status-normal {
+    background-color: var(--color-normal);
+    color: var(--color-normal);
+}
+
+.status-dot.status-caution {
+    background-color: var(--color-caution);
+    color: var(--color-caution);
+}
+
+.status-dot.status-warning {
+    background-color: var(--color-warning);
+    color: var(--color-warning);
+}
+
+.status-dot.status-danger {
+    background-color: var(--color-danger);
+    color: var(--color-danger);
+}
+
+.status-dot.status-inactive {
+    background-color: #64748b;
+    color: #64748b;
 }
 
 /* Sensor Values - Liquid Glass */
@@ -590,6 +642,18 @@
     font-weight: bold;
     color: var(--text-primary);
     text-align: right;
+}
+
+.stat-value.status-online {
+    color: var(--color-normal);
+}
+
+.stat-value.status-danger {
+    color: var(--color-danger);
+}
+
+.stat-value.status-warning {
+    color: var(--color-warning);
 }
 
 /* CCTV Popup */
