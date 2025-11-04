@@ -1,0 +1,548 @@
+#!/usr/bin/env python3
+# Fire detection GUI + Passive Buzzer (PWM) for Orange Pi
+# - Buzzer stays silent at start
+# - Beeps only when 'Fire' is detected above threshold
+# - Supports active-low wiring via BUZZER_ACTIVE_LOW
+
+import os
+import cv2
+import numpy as np
+import time
+import tkinter as tk
+from threading import Thread, Lock
+from PIL import Image, ImageTk
+from tflite_runtime.interpreter import Interpreter
+import threading
+import requests
+from datetime import datetime
+import base64
+import sys
+import signal
+import OPi.GPIO as GPIO  # Orange Pi GPIO
+
+# ===================== 사용자 설정 =====================
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR   = os.path.join(CURRENT_DIR, "TFLite_model")
+GRAPH_NAME  = "firebest-fp16.tflite"
+LABELMAP_NAME = "labelmap.txt"
+
+MIN_CONF_THRESHOLD = 0.275
+imW, imH = 640, 480
+VIDEO_PATH = os.path.join(CURRENT_DIR, "Johnston family loses home in massive fire.mp4")
+
+# --- 부저(수동식) 설정 ---
+BUZZER_PIN       = "PA18"  # SUNXI 핀명
+BUZZER_ENABLED   = True
+# 부저가 실행하자마자 울리면 True/False를 반대로 바꿔보세요.
+BUZZER_ACTIVE_LOW = False
+DEFAULT_BUZZ_FREQ = 2000   # 2~5 kHz 권장 (수동부저)
+DEFAULT_BUZZ_DUTY = 90     # 60~90% 권장
+# =======================================================
+
+# ----------------- API 서버 설정 -----------------
+API_SERVER = "https://prism-api-qnxu.onrender.com/"
+INGEST_ENDPOINT = f"{API_SERVER}/ingest"
+API_KEY = "supersecret_key_please_change_me"
+DEVICE_ID = "orangepi_fire_detector_01"
+ENABLE_API_SEND = True
+
+HEADERS = {
+    "Content-Type": "application/json",
+    "X-Api-Key": API_KEY
+}
+# ------------------------------------------------
+
+# ================= 모델/라벨 로딩 =================
+PATH_TO_CKPT   = os.path.join(MODEL_DIR, GRAPH_NAME)
+PATH_TO_LABELS = os.path.join(MODEL_DIR, LABELMAP_NAME)
+
+with open(PATH_TO_LABELS, 'r') as f:
+    labels = [line.strip() for line in f.readlines()]
+
+interpreter = Interpreter(model_path=PATH_TO_CKPT)
+interpreter.allocate_tensors()
+
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+input_height  = int(input_details[0]['shape'][1])
+input_width   = int(input_details[0]['shape'][2])
+floating_model = (input_details[0]['dtype'] == np.float32)
+
+input_mean, input_std = 127.5, 127.5
+# =================================================
+
+# ================= GPIO 초기화 ====================
+try:
+    GPIO.setmode(GPIO.SUNXI)
+    IDLE_LEVEL = GPIO.HIGH if BUZZER_ACTIVE_LOW else GPIO.LOW
+    GPIO.setup(BUZZER_PIN, GPIO.OUT, initial=IDLE_LEVEL)
+    print("GPIO 초기화 성공")
+except Exception as e:
+    print(f"GPIO 초기화 실패: {e}")
+    print("부저 기능이 비활성화됩니다.")
+    BUZZER_ENABLED = False
+# =================================================
+
+# =============== 수동부저용 SW-PWM ===============
+class PassiveBuzzerPWM:
+    """Python 소프트웨어 PWM로 수동부저 구동 (Orange Pi)"""
+    def __init__(self, pin, freq_hz=1500, duty_pct=90, active_low=False):
+        self.pin = pin
+        self.freq = float(freq_hz)
+        self.duty = float(duty_pct) / 100.0
+        self.active_low = active_low
+        self._run = False
+        self._th = None
+        self._lock = Lock()
+
+    def _levels(self):
+        on_level  = GPIO.LOW  if self.active_low else GPIO.HIGH
+        off_level = GPIO.HIGH if self.active_low else GPIO.LOW
+        return on_level, off_level
+
+    def _loop(self):
+        period = 1.0 / max(1.0, self.freq)
+        on_t   = max(0.00005, period * self.duty)
+        off_t  = max(0.00005, period - on_t)
+        on_level, off_level = self._levels()
+        while self._run:
+            GPIO.output(self.pin, on_level)
+            time.sleep(on_t)
+            GPIO.output(self.pin, off_level)
+            time.sleep(off_t)
+
+    def start(self, freq_hz=None, duty_pct=None):
+        with self._lock:
+            if freq_hz is not None:
+                self.freq = float(freq_hz)
+            if duty_pct is not None:
+                self.duty = float(duty_pct) / 100.0
+            if self._run:
+                return
+            self._run = True
+            self._th = Thread(target=self._loop, daemon=True)
+            self._th.start()
+
+    def stop(self):
+        with self._lock:
+            if not self._run:
+                # 실행 중이 아니어도 유휴레벨로 확실히 OFF
+                _, off_level = self._levels()
+                GPIO.output(self.pin, off_level)
+                return
+            self._run = False
+        if self._th:
+            self._th.join(timeout=0.2)
+        _, off_level = self._levels()
+        GPIO.output(self.pin, off_level)
+
+buzzer = PassiveBuzzerPWM(
+    BUZZER_PIN, DEFAULT_BUZZ_FREQ, DEFAULT_BUZZ_DUTY,
+    active_low=BUZZER_ACTIVE_LOW
+) if BUZZER_ENABLED else None
+# =================================================
+
+# ================== API 전송 함수 =================
+def send_fire_event_to_api(detection, frame_size):
+    if not ENABLE_API_SEND:
+        return False
+    try:
+        timestamp = time.time()
+        (xmin, ymin, xmax, ymax) = detection['box']
+        event_data = {
+            "device_id": DEVICE_ID,
+            "ts": timestamp,
+            "data": {
+                "type": "fire_detection",
+                "label": detection['label'],
+                "score": float(detection['confidence']),
+                "bbox": [int(xmin), int(ymin), int(xmax), int(ymax)],
+                "frame_size": [int(frame_size[0]), int(frame_size[1])]
+            }
+        }
+        response = requests.post(
+            INGEST_ENDPOINT,
+            json=event_data,
+            headers=HEADERS,
+            timeout=5
+        )
+        if response.status_code == 200:
+            print(f"✓ Fire event sent: {detection['label']}")
+            return True
+        else:
+            print(f"✗ Failed to send fire event: {response.status_code} - {response.text}")
+            return False
+    except Exception as e:
+        print(f"✗ Error sending fire event to API: {e}")
+        return False
+
+def send_video_stream_to_api(frame):
+    if not ENABLE_API_SEND:
+        return False
+    try:
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        frame_base64 = base64.b64encode(buffer).decode('utf-8')
+        stream_data = {
+            "device_id": DEVICE_ID,
+            "ts": time.time(),
+            "data": {
+                "type": "video_stream",
+                "frame": frame_base64,
+                "width": frame.shape[1],
+                "height": frame.shape[0]
+            }
+        }
+        response = requests.post(
+            INGEST_ENDPOINT,
+            json=stream_data,
+            headers=HEADERS,
+            timeout=5
+        )
+        return response.status_code == 200
+    except Exception:
+        return False
+# =================================================
+
+# ================== 비디오 스트림 =================
+class VideoStream:
+    def __init__(self, video_path=None, resolution=(640, 480), fps=35):
+        self.video_path = video_path
+        self.fps = fps
+        self.prev_time = 0
+        self.frame_count = 0
+        self.start_time = time.time()
+        self.stream = None
+
+        if video_path:
+            self.stream = cv2.VideoCapture(video_path)
+            self.fps = self.stream.get(cv2.CAP_PROP_FPS)
+            if self.fps <= 0:
+                self.fps = 30
+        else:
+            self.stream = cv2.VideoCapture(40)
+            self.fps = fps
+
+        self.delay = int(1000 / self.fps)
+        self.stream.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+        self.stream.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+        (self.grabbed, self.frame) = self.stream.read()
+        self.stopped = False
+        if self.video_path:
+            self.stream = None
+            self.load_stream()
+
+    def load_stream(self):
+        if self.stream is not None:
+            self.stream.release()
+        self.stream = cv2.VideoCapture(self.video_path)
+        self.fps = self.stream.get(cv2.CAP_PROP_FPS) if self.stream.get(cv2.CAP_PROP_FPS) > 0 else 30
+        self.frame_count = 0
+        self.start_time = time.time()
+
+    def start(self):
+        Thread(target=self.update, args=()).start()
+        return self
+
+    def update(self):
+        while True:
+            if self.stopped:
+                self.stream.release()
+                return
+            current_time = time.time() - self.prev_time
+            if self.video_path and current_time > 1. / self.fps:
+                self.prev_time = time.time()
+                ret, frame = self.stream.read()
+                if not ret:
+                    self.load_stream()
+                    continue
+                time.sleep(max(0, (1. / self.fps) - (time.time() - self.prev_time)))
+                self.frame = frame
+            else:
+                ret, frame = self.stream.read()
+                self.frame = frame
+                self.frame_count += 1
+
+    def read(self):
+        return self.frame
+
+    def get_fps(self):
+        if self.video_path:
+            return 30
+        else:
+            elapsed_time = time.time() - self.start_time
+            fps = self.frame_count / max(0.001, elapsed_time)
+            return fps
+
+    def stop(self):
+        self.stopped = True
+        if self.stream is not None:
+            self.stream.release()
+# =================================================
+
+# ================== 부저 제어 래퍼 =================
+def control_buzzer(status, freq=DEFAULT_BUZZ_FREQ, duty=DEFAULT_BUZZ_DUTY):
+    """True -> PWM 시작 / False -> 정지"""
+    global BUZZER_ENABLED, buzzer
+    if not BUZZER_ENABLED or buzzer is None:
+        return
+    try:
+        if status:
+            buzzer.start(freq_hz=freq, duty_pct=duty)
+        else:
+            buzzer.stop()
+    except Exception as e:
+        print(f"부저 제어 실패: {e}")
+        BUZZER_ENABLED = False
+# =================================================
+
+# ====================== GUI ======================
+class App:
+    def __init__(self, window):
+        self.window = window
+        self.window.title("Fire Detection")
+        self.bulb_status = {
+            'Fire': {'status': 'off', 'last_on_time': 0},
+            'Smoke': {'status': 'off', 'last_on_time': 0}
+        }
+        self.buzzer_active = False
+        self.stream_frame_counter = 0
+        self.stream_send_interval = 1
+
+        # 시작 시 창 숨김
+        self.window.withdraw()
+        self.select_source()
+
+    def select_source(self):
+        selection_window = tk.Toplevel(self.window)
+        selection_window.title("Select Video Source")
+        timer = threading.Timer(15.0, lambda: self.start_stream(selection_window, "video"))
+        timer.start()
+        tk.Label(selection_window, text="Select a source for the video stream:").pack(pady=10)
+        tk.Button(selection_window, text="Use Video File",
+                  command=lambda: [timer.cancel(), self.start_stream(selection_window, "video")]).pack(pady=10)
+        tk.Button(selection_window, text="Use Camera",
+                  command=lambda: [timer.cancel(), self.start_stream(selection_window, "camera")]).pack(pady=10)
+
+    def start_stream(self, selection_window, source_type):
+        selection_window.destroy()
+        video_path = VIDEO_PATH if source_type == "video" else None
+
+        self.window.deiconify()
+        self.window.attributes("-fullscreen", True)
+        self.window.bind("<Escape>", self.exit_program)
+
+        self.canvas = tk.Canvas(self.window, width=1920, height=1080)
+        self.canvas.place(x=0, y=0)
+
+        self.videostream = VideoStream(video_path=video_path, resolution=(imW, imH), fps=35).start()
+        self.video_frame_id = self.canvas.create_image(0, 0, anchor="nw")
+        self.video_frame_img = None
+
+        self.setup_ui()
+
+        self.inference_thread = Thread(target=self.inference)
+        self.inference_thread.start()
+
+        self.frame_counter = 0
+        self.update_frame()
+
+    def setup_ui(self):
+        light_bg_img = Image.open("/home/orangepi/opi_fire_Detecting_Model/image/light_background.png")
+        self.image_bg = ImageTk.PhotoImage(light_bg_img)
+        self.canvas.create_image(1280, 0, image=self.image_bg, anchor="nw")
+
+        self.images = {
+            'Fire': {
+                'on': ImageTk.PhotoImage(Image.open("/home/orangepi/opi_fire_Detecting_Model/image/fire_on.png")),
+                'off': ImageTk.PhotoImage(Image.open("/home/orangepi/opi_fire_Detecting_Model/image/fire_off.png"))
+            },
+            'Smoke': {
+                'on': ImageTk.PhotoImage(Image.open("/home/orangepi/opi_fire_Detecting_Model/image/smoke_on.png")),
+                'off': ImageTk.PhotoImage(Image.open("/home/orangepi/opi_fire_Detecting_Model/image/smoke_off.png"))
+            }
+        }
+        self.bulb_labels = {
+            'Fire':  self.canvas.create_image(1320, 211, image=self.images['Fire']['off'],  anchor="nw"),
+            'Smoke': self.canvas.create_image(1320, 431, image=self.images['Smoke']['off'], anchor="nw")
+        }
+
+        hbk_img = Image.open("/home/orangepi/opi_fire_Detecting_Model/image/HBK.png")
+        self.image_photo = ImageTk.PhotoImage(hbk_img)
+        self.canvas.create_image(1480, 0, image=self.image_photo, anchor="nw")
+
+        self.fps_text = self.canvas.create_text(0, 720, anchor="nw", text="FPS: 0", font=("Arial", 12))
+        self.log_text = tk.Text(self.window, height=21, width=250)
+        self.log_text.place(x=0, y=740)
+        self.log_text.insert(tk.END, "Logs:\n")
+
+    def add_log(self, new_log):
+        self.window.after(0, self._add_log, new_log)
+
+    def _add_log(self, new_log):
+        self.log_text.insert(tk.END, f"{new_log}\n")
+        self.log_text.see(tk.END)
+
+    def inference(self):
+        while True:
+            try:
+                frame = self.videostream.read()
+                if frame is None:
+                    print("End of video or failed to read frame, restarting video...")
+                    self.videostream.stream.release()
+                    self.videostream.stream = cv2.VideoCapture(VIDEO_PATH)
+                    continue
+
+                inference_results = self.run_inference(frame)
+                self.update_bulbs(inference_results)
+
+                # ---- 화재 감지 시에만 부저 ON ----
+                fire_detected = any(
+                    (det.get('label') == 'Fire') and (float(det.get('confidence', 0)) >= MIN_CONF_THRESHOLD)
+                    for det in inference_results
+                ) if inference_results else False
+
+                if fire_detected and not self.buzzer_active:
+                    control_buzzer(True, DEFAULT_BUZZ_FREQ, DEFAULT_BUZZ_DUTY)
+                    self.buzzer_active = True
+                elif (not fire_detected) and self.buzzer_active:
+                    control_buzzer(False)
+                    self.buzzer_active = False
+                # ----------------------------------
+
+                # 감지 이벤트 API 전송
+                if inference_results:
+                    frame_size = (frame.shape[1], frame.shape[0])
+                    for detection in inference_results:
+                        Thread(target=send_fire_event_to_api, args=(detection, frame_size)).start()
+
+            except Exception as e:
+                print(f"Error during inference: {e}")
+
+    def run_inference(self, frame):
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame_resized = cv2.resize(frame_rgb, (input_width, input_height))
+        input_data = np.expand_dims(frame_resized, axis=0)
+        if floating_model:
+            input_data = (np.float32(input_data) - input_mean) / input_std
+
+        interpreter.set_tensor(input_details[0]['index'], input_data)
+        interpreter.invoke()
+
+        output_data = interpreter.get_tensor(output_details[0]['index'])[0]
+        boxes = output_data[:, :4]
+        confidences = output_data[:, 4]
+        class_probs = output_data[:, 5:]
+
+        classes = np.argmax(class_probs, axis=-1)
+        scores = np.max(class_probs, axis=-1)
+
+        detections = []
+        for i in range(len(confidences)):
+            if (confidences[i] > MIN_CONF_THRESHOLD) and (confidences[i] <= 1.0):
+                x_center = boxes[i][0] * imW
+                y_center = boxes[i][1] * imH
+                width = boxes[i][2] * imW
+                height = boxes[i][3] * imH
+
+                xmin = int(x_center - (width / 2))
+                ymin = int(y_center - (height / 2))
+                xmax = int(x_center + (width / 2))
+                ymax = int(y_center + (height / 2))
+
+                detections.append({
+                    'box': (xmin, ymin, xmax, ymax),
+                    'confidence': confidences[i],
+                    'class_id': classes[i],
+                    'label': labels[int(classes[i])]
+                })
+
+        if detections:
+            for detection in detections:
+                (xmin, ymin, xmax, ymax) = detection['box']
+                current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+                object_area = (xmax - xmin) * (ymax - ymin)
+                self.add_log(
+                    f"[{current_time}] === DETECTED: {detection['label']} (ID: {detection['class_id']}) === "
+                    f"BBox: (xmin:{xmin}, ymin:{ymin}, xmax:{xmax}, ymax:{ymax}), "
+                    f"Size: W={xmax-xmin}, H={ymax-ymin}, Area={object_area}"
+                )
+
+        return detections
+
+    def update_bulbs(self, detections):
+        detected_classes = set([d['label'] for d in detections])
+        current_time = time.time()
+
+        for class_name, label_id in self.bulb_labels.items():
+            if class_name in detected_classes:
+                if self.bulb_status[class_name]['status'] == 'off':
+                    self.canvas.itemconfig(label_id, image=self.images[class_name]['on'])
+                    self.canvas.tag_raise(label_id)
+                    self.bulb_status[class_name]['status'] = 'on'
+                    self.bulb_status[class_name]['last_on_time'] = current_time
+                self.window.after(2000, lambda class_name=class_name, label_id=label_id: self.check_and_turn_off_bulb(class_name, current_time))
+
+    def check_and_turn_off_bulb(self, class_name, turn_on_time):
+        current_time = time.time()
+        if current_time - self.bulb_status[class_name]['last_on_time'] >= 2 and self.bulb_status[class_name]['last_on_time'] == turn_on_time:
+            self.canvas.itemconfig(self.bulb_labels[class_name], image=self.images[class_name]['off'])
+            self.bulb_status[class_name]['status'] = 'off'
+
+    def update_frame(self):
+        try:
+            frame = self.videostream.read()
+            if frame is None:
+                print("frame is None.")
+                return
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame_resized = cv2.resize(frame_rgb, (1280, 720))
+            img = Image.fromarray(frame_resized)
+            imgtk = ImageTk.PhotoImage(image=img)
+            self.canvas.itemconfig(self.video_frame_id, image=imgtk)
+            self.video_frame_img = imgtk
+
+            self.stream_frame_counter += 1
+            if self.stream_frame_counter % self.stream_send_interval == 0:
+                Thread(target=send_video_stream_to_api, args=(frame.copy(),)).start()
+
+            self.frame_counter += 1
+            if self.frame_counter % 20 == 0:
+                fps = self.videostream.get_fps()
+                self.canvas.itemconfig(self.fps_text, text=f"FPS: {fps:.2f}")
+
+            self.window.after(50, self.update_frame)
+        except Exception as e:
+            print(f"Error in update_frame: {e}")
+
+    def exit_program(self, event=None):
+        self.videostream.stop()
+        # 부저/ GPIO 정리
+        try:
+            control_buzzer(False)
+            if buzzer:
+                buzzer.stop()
+            GPIO.cleanup()
+        except Exception as e:
+            print(f"GPIO 정리 중 오류 발생: {e}")
+        self.window.destroy()
+# =================================================
+
+# ================ 시그널 핸들러 ==================
+def _sig_handler(signum, frame):
+    try:
+        control_buzzer(False)
+        if buzzer:
+            buzzer.stop()
+        GPIO.cleanup()
+    except Exception:
+        pass
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, _sig_handler)
+signal.signal(signal.SIGTERM, _sig_handler)
+# =================================================
+
+# ===================== 시작 ======================
+root = tk.Tk()
+app = App(root)
+root.mainloop()
